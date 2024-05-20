@@ -13,10 +13,12 @@ import {
 } from 'wechaty'
 
 import qrcodeTerminal from 'qrcode-terminal';
+import { FileBox } from "file-box";
 
 // 请填写你的配置信息
 const REDIS_URL = 'redis://127.0.0.1:6379';
 const MSG_FILE = '/Users/chenjili/all.txt';
+const IMAGE_SAVE_DIR = '/Users/chenjili/images/';
 let aliasList: string[] = [];
 const contactCache = new Map<string, Contact>();
 const redisClient = createClient({ url: REDIS_URL });
@@ -68,22 +70,49 @@ function formatDate(date: Date): string {
     return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
 }
 
+async function get_contact_text(contact: Contact) {
+    const alias_text = await contact.alias()
+    if (alias_text && alias_text in aliasList) {
+        return alias_text
+    }
+    else {
+        return contact.name()
+    }
+}
+
 
 async function onMessage(msg: Message) {
     const room = msg.room()
     if (room) {
         return;
     }
+
     const from = msg.talker() //from
-    const to = msg.listener() //to
+    const to = msg.listener() as Contact //to
     if (!from || from.type() !== bot.Contact.Type.Individual) {
         return;
     }
-    const msg_text = msg.text()
-    if (!msg_text) {
+    const msg_type = msg.type() //消息类型
+    let message;
+    if (msg_type === bot.Message.Type.Text) {
+        message = msg.text()
+    }
+    else if (msg_type === bot.Message.Type.Image) {
+        const fileBox = await msg.toFileBox()
+        const fileName = fileBox.name
+        const image_save_path = IMAGE_SAVE_DIR + fileName;
+        await fileBox.toFile(image_save_path)
+        message = image_save_path
+    }
+    else {
         return;
     }
-    const content: string = `${formatDate(new Date())} | f(${from.name()}), t(${to?.name()}): ${msg_text}\n`;
+    if (!message) {
+        return;
+    }
+    let from_text = await get_contact_text(from)
+    let to_text = await get_contact_text(to)
+    const content: string = `${formatDate(new Date())} | f(${from_text}), t(${to_text}): ${message}\n`;
 
     try {
         await fs.appendFile(MSG_FILE, content, { flush: true });
@@ -94,11 +123,25 @@ async function onMessage(msg: Message) {
 
 async function sendMessage(contact: Contact, message: string) {
     try {
-        await contact.say(message);
+        if (message.startsWith('paste ')) {
+            const image_file_path = message.replace('paste ', '');
+            const image_file_stat = await fs.stat(image_file_path);
+            if (image_file_stat.isFile()) {
+                const fileBox = FileBox.fromFile(image_file_path)
+                await contact.say(fileBox);
+            }
+            else {
+                console.error("not file");
+            }
+        }
+        else {
+            await contact.say(message);
+        }
+
         log.info('RedisQueue', `Message sent: ${message}`);
-        const from = bot.currentUser.name();
-        const to = contact.name()
-        const content: string = `${formatDate(new Date())} | f(${from}), t(${to}): ${message}\n`;
+        const from_text = await get_contact_text(bot.currentUser)
+        const to_text = await get_contact_text(contact)
+        const content: string = `${formatDate(new Date())} | f(${from_text}), t(${to_text}): ${message}\n`;
 
         try {
             await fs.appendFile(MSG_FILE, content, { flush: true });
@@ -150,7 +193,7 @@ if (aliasList.length === 0) {
 
 
 try {
-    const content: string = formatDate(new Date())  + " program begin\n";
+    const content: string = formatDate(new Date()) + " program begin\n";
     await fs.appendFile(MSG_FILE, content, { flush: true });
 } catch (err) {
     console.error("Error writing program begin to file", err);
