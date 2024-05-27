@@ -91,7 +91,7 @@ async function is_message_should_be_handled(msg: Message): Promise<[boolean, boo
     const room = msg.room();
     if (room) {
         const room_topic: string = await room.topic();
-        const allowed_room_topics = ["几口人", "东风Honda HR-V车友群"];
+        const allowed_room_topics = ["几口人", "一家人"];
         return [allowed_room_topics.includes(room_topic), true];
     }
 
