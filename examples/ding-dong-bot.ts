@@ -87,13 +87,23 @@ function formatDate(date: Date): string {
 //     }
 // }
 
-
-async function onMessage(msg: Message) {
-    const room = msg.room()
+async function is_message_should_be_handled(msg: Message): Promise<[boolean, boolean]> {
+    const room = msg.room();
     if (room) {
-        return;
+        const room_topic: string = await room.topic();
+        const allowed_room_topics = ["几口人", "东风Honda HR-V车友群"];
+        return [allowed_room_topics.includes(room_topic), true];
     }
 
+    return [true, false];
+}
+
+async function onMessage(msg: Message) {
+
+    const [should_be_handled, is_room_msg] = await is_message_should_be_handled(msg);
+    if (!should_be_handled) {
+        return;
+    }
     const from = msg.talker() //from
     const to = msg.listener() as Contact //to
     if (!from || from.type() !== bot.Contact.Type.Individual) {
@@ -117,11 +127,21 @@ async function onMessage(msg: Message) {
     if (!message) {
         return;
     }
-    const from_name = from.name()
-    const to_name = to.name()
 
-    let from_text = name2AliasCache.get(from_name)
-    let to_text = name2AliasCache.get(to_name)
+    let from_text;
+    let to_text;
+
+    if (is_room_msg) {
+        from_text = from.name()
+        to_text = "!mems!"
+    }
+    else {
+        const from_name = from.name()
+        const to_name = to.name()
+        from_text = name2AliasCache.get(from_name)
+        to_text = name2AliasCache.get(to_name)
+    }
+
     const content: string = `${formatDate(new Date())} | f(${from_text}), t(${to_text}): ${message}\n`;
 
     try {
