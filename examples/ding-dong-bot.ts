@@ -150,10 +150,10 @@ async function onMessage(msg: Message) {
 async function sendMessage(contact: Contact, remark: string, message: string) {
     try {
         if (message.startsWith('paste ')) {
-            const image_file_path = message.replace('paste ', '');
-            const image_file_stat = await fs.stat(image_file_path);
+            const file_path = message.replace('paste ', '');
+            const image_file_stat = await fs.stat(file_path);
             if (image_file_stat.isFile()) {
-                const fileBox = FileBox.fromFile(image_file_path)
+                const fileBox = FileBox.fromFile(file_path)
                 await contact.say(fileBox);
             }
             else {
@@ -163,21 +163,23 @@ async function sendMessage(contact: Contact, remark: string, message: string) {
         else {
             await contact.say(message);
         }
-
-        log.info('RedisQueue', `Message sent: ${message}`);
-        const from_text = "me"
-        const to_text = remark
-        const content: string = `${formatDate(new Date())} | f(${from_text}), t(${to_text}): ${message}\n`;
-
-        try {
-            await fs.appendFile(MSG_FILE, content, { flush: true });
-        } catch (err) {
-            log.error('FileWrite', 'Error writing outting message to file', err);
-        }
     } catch (err) {
         log.error('RedisQueue', 'Error sending message:', err);
+        return;
+    }
+
+    log.info('RedisQueue', `Message sent: ${message}`);
+    const from_text = "me"
+    const to_text = remark
+    const content: string = `${formatDate(new Date())} | f(${from_text}), t(${to_text}): ${message}\n`;
+
+    try {
+        await fs.appendFile(MSG_FILE, content, { flush: true });
+    } catch (err) {
+        log.error('FileWrite', 'Error writing outting message to file', err);
     }
 }
+
 
 async function processMessageQueue() {
     remarkList = await getRemarks();
