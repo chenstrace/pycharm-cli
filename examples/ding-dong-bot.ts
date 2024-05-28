@@ -64,7 +64,6 @@ function onLogin(user: Contact) {
 
 function onLogout(user: Contact) {
     log.info('onOut', '%s out', user)
-    process.exit(2);
 }
 
 function formatDate(date: Date): string {
@@ -151,24 +150,25 @@ async function sendMessage(contact: Contact, remark: string, message: string) {
     try {
         if (message.startsWith('paste ')) {
             const file_path = message.replace('paste ', '');
-            const image_file_stat = await fs.stat(file_path);
-            if (image_file_stat.isFile()) {
+            const file_stat = await fs.stat(file_path);
+            if (file_stat.isFile()) {
                 const fileBox = FileBox.fromFile(file_path)
                 await contact.say(fileBox);
             }
             else {
                 console.error("not file");
+                return false;
             }
         }
         else {
             await contact.say(message);
         }
     } catch (err) {
-        log.error('RedisQueue', 'Error sending message:', err);
-        return;
+        log.error('RedisQueue', 'Error sending(%s): %s', remark, message);
+        return false;
     }
 
-    log.info('RedisQueue', `Message sent: ${message}`);
+    log.info('sendMessage', `Sent(${remark}): ${message}`);
     const from_text = "me"
     const to_text = remark
     const content: string = `${formatDate(new Date())} | f(${from_text}), t(${to_text}): ${message}\n`;
@@ -178,7 +178,42 @@ async function sendMessage(contact: Contact, remark: string, message: string) {
     } catch (err) {
         log.error('FileWrite', 'Error writing outting message to file', err);
     }
+    return true;
 }
+
+async function processRemark(remark: string) {
+    let contact = remark2ContactCache.get(remark);
+
+    if (contact) {
+        log.info("processRemark", "got (%s) from cache", remark);
+
+        const contact_name = contact.name();
+        if (contact_name) {
+            name2RemarkCache.set(contact_name, remark);
+        }
+    } else {
+        log.info("processRemark", "Contact.find(%s)", remark);
+        contact = await bot.Contact.find({ name: remark });
+        if (contact) {
+            if (contact.friend()) {
+                remark2ContactCache.set(remark, contact);
+                log.info("processRemark", "Contact.find(%s) OK", remark);
+            }
+            else {
+                log.info("processRemark", "found (%s), but NOT friend, SYNC", remark);
+                await contact.sync();
+            }
+        }
+        else {
+            log.error("processRemark", "Contact.find(%s) FAIL", remark);
+
+        }
+    }
+    console.log("processRemark return ", contact);
+
+    return contact;
+}
+
 
 
 async function processMessageQueue() {
@@ -188,27 +223,13 @@ async function processMessageQueue() {
     for (const remark of remarkList) {
         let message;
         while ((message = await redisClient.lPop(remark))) {
-            let contact = remark2ContactCache.get(remark);
+            // let success = false;
 
-            if (!contact) {
-                log.info("processMessageQueue", "Contact.find(%s)", remark);
-
-                contact = await bot.Contact.find({ name: remark });
-                if (contact) {
-                    log.info("processMessageQueue", "Contact.find(%s) OK", remark);
-                    remark2ContactCache.set(remark, contact);
-                }
-                else {
-                    log.error("processMessageQueue", "Contact not found for name: %s", remark)
-                }
-            }
+            const contact = await processRemark(remark);
             if (contact) {
-                const contact_name = contact.name()
-                if (contact_name) {
-                    name2RemarkCache.set(contact_name, remark)
-                }
                 await sendMessage(contact, remark, message);
             }
+
         }
     }
 }
@@ -249,6 +270,7 @@ bot.on('scan', onScan)
         }
 
         name2RemarkCache.set(bot.currentUser.name(), 'me')
+        // await initCache();
         await setupPeriodicMessageSending();
     })
     .on('error', console.error)
