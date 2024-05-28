@@ -228,7 +228,6 @@ try {
     await fs.appendFile(MSG_FILE, content, { flush: true });
 } catch (err) {
     console.error("Error writing program begin to file", err);
-    log.error('main', 'Error writing program begin to file', err);
 }
 const bot = WechatyBuilder.build({ name: 'ding-dong-bot' });
 
@@ -238,7 +237,15 @@ bot.on('scan', onScan)
     .on('logout', onLogout)
     .on('message', onMessage)
     .on('ready', async () => {
-        log.info('onReady', 'setting up timer function');
+        log.info('onReady', 'setting up timer');
+
+        try {
+            const content: string = formatDate(new Date()) + " program ready\n";
+            await fs.appendFile(MSG_FILE, content, { flush: true });
+        } catch (err) {
+            console.error("Error writing ready to file", err);
+        }
+
         name2RemarkCache.set(bot.currentUser.name(), 'me')
         await setupPeriodicMessageSending();
     })
