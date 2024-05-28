@@ -20,21 +20,21 @@ import * as os from 'os';
 const HOME_DIR = os.homedir();
 
 const MSG_FILE = `${HOME_DIR}/all.txt`;
-const IMAGE_SAVE_DIR = `${HOME_DIR}/images/`;
-
-// 请填写你的配置信息
+const ATT_SAVE_DIR = `${HOME_DIR}/attachments/`;
 const REDIS_URL = 'redis://127.0.0.1:6379';
+const REDIS_REMARK_KEY = "remark_list";
+const allowedRoomTopics = ["几口人", "一家人"];
 
-let aliasList: string[] = [];
-const contactCache = new Map<string, Contact>();
-const name2AliasCache = new Map<string, string>();
+let remarkList: string[] = []; //没有备注时，名字就是备注
+const remark2ContactCache = new Map<string, Contact>();
+const name2RemarkCache = new Map<string, string>(); //名字到备注的映射，作用是写入聊天记录的from to字段时，优先使用备注
+
 const redisClient = createClient({ url: REDIS_URL });
-
 redisClient.on('error', (err) => console.error('Redis Client Error', err));
 
-async function get_alias() {
+async function getRemarks() {
     try {
-        const result: string[] = await redisClient.sMembers('alias_list');
+        const result: string[] = await redisClient.sMembers(REDIS_REMARK_KEY);
         return result;
     } catch (error) {
         console.error('Redis error:', error);
@@ -50,20 +50,21 @@ function onScan(qrcode: string, status: ScanStatus) {
             'https://wechaty.js.org/qrcode/',
             encodeURIComponent(qrcode),
         ].join('')
-        log.error('scan', 'onScan: %s(%s) - %s', ScanStatus[status], status, qrcodeImageUrl)
+        log.info('scan', 'onScan: %s(%s) - %s', ScanStatus[status], status, qrcodeImageUrl)
 
         qrcodeTerminal.generate(qrcode, { small: true })
     } else {
-        log.error('scan', 'onScan: %s(%s)', ScanStatus[status], status)
+        log.info('scan', 'onScan: %s(%s)', ScanStatus[status], status)
     }
 }
 
 function onLogin(user: Contact) {
-    log.error('onIn', '%s in', user)
+    log.info('onIn', '%s in', user)
 }
 
 function onLogout(user: Contact) {
-    log.error('onOut', '%s out', user)
+    log.info('onOut', '%s out', user)
+    process.exit(2);
 }
 
 function formatDate(date: Date): string {
@@ -77,22 +78,11 @@ function formatDate(date: Date): string {
     return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
 }
 
-// async function get_contact_text(contact: Contact) {
-//     const alias_text = await contact.alias()
-//     if (alias_text && alias_text in aliasList) {
-//         return alias_text
-//     }
-//     else {
-//         return contact.name()
-//     }
-// }
-
 async function is_message_should_be_handled(msg: Message): Promise<[boolean, boolean]> {
     const room = msg.room();
     if (room) {
         const room_topic: string = await room.topic();
-        const allowed_room_topics = ["几口人", "一家人"];
-        return [allowed_room_topics.includes(room_topic), true];
+        return [allowedRoomTopics.includes(room_topic), true];
     }
 
     return [true, false];
@@ -110,16 +100,16 @@ async function onMessage(msg: Message) {
         return;
     }
     const msg_type = msg.type()
-    let message;
+    let message: string = "";
     if (msg_type === bot.Message.Type.Text) {
         message = msg.text()
     }
     else if (msg_type === bot.Message.Type.Image || msg_type == bot.Message.Type.Video || msg_type == bot.Message.Type.Audio) {
         const fileBox = await msg.toFileBox()
         const fileName = fileBox.name
-        const image_save_path = IMAGE_SAVE_DIR + fileName;
-        await fileBox.toFile(image_save_path)
-        message = image_save_path
+        const save_path = ATT_SAVE_DIR + fileName;
+        await fileBox.toFile(save_path)
+        message = save_path
     }
     else {
         return;
@@ -138,8 +128,8 @@ async function onMessage(msg: Message) {
     else {
         const from_name = from.name()
         const to_name = to.name()
-        from_text = name2AliasCache.get(from_name)
-        to_text = name2AliasCache.get(to_name)
+        from_text = name2RemarkCache.get(from_name)
+        to_text = name2RemarkCache.get(to_name)
     }
 
     const content: string = `${formatDate(new Date())} | f(${from_text}), t(${to_text}): ${message}\n`;
@@ -155,10 +145,9 @@ async function onMessage(msg: Message) {
     } catch (err) {
         log.error('RedisWrite', 'Error incr msg count', err);
     }
-
 }
 
-async function sendMessage(contact: Contact, contact_alias: string, message: string) {
+async function sendMessage(contact: Contact, remark: string, message: string) {
     try {
         if (message.startsWith('paste ')) {
             const image_file_path = message.replace('paste ', '');
@@ -177,7 +166,7 @@ async function sendMessage(contact: Contact, contact_alias: string, message: str
 
         log.info('RedisQueue', `Message sent: ${message}`);
         const from_text = "me"
-        const to_text = contact_alias
+        const to_text = remark
         const content: string = `${formatDate(new Date())} | f(${from_text}), t(${to_text}): ${message}\n`;
 
         try {
@@ -191,27 +180,32 @@ async function sendMessage(contact: Contact, contact_alias: string, message: str
 }
 
 async function processMessageQueue() {
-    aliasList = await get_alias();
+    remarkList = await getRemarks();
 
     log.info("processMessageQueue", "Processing message queue...")
-    for (const alias of aliasList) {
+    for (const remark of remarkList) {
         let message;
-        while ((message = await redisClient.lPop(alias))) {
-            let contact = contactCache.get(alias);
+        while ((message = await redisClient.lPop(remark))) {
+            let contact = remark2ContactCache.get(remark);
+
             if (!contact) {
-                contact = await bot.Contact.find({ alias });
+                log.info("processMessageQueue", "Contact.find(%s)", remark);
+
+                contact = await bot.Contact.find({ name: remark });
                 if (contact) {
-                    contactCache.set(alias, contact);
-                    name2AliasCache.set(contact.name(), alias)
+                    log.info("processMessageQueue", "Contact.find(%s) OK", remark);
+                    remark2ContactCache.set(remark, contact);
                 }
                 else {
-                    log.error("processMessageQueue", "Contact not found for alias:", alias)
+                    log.error("processMessageQueue", "Contact not found for name:", remark)
                 }
             }
             if (contact) {
-                await sendMessage(contact, alias, message);
-            } else {
-                log.error('RedisQueue', `Contact not found for alias: ${alias}`);
+                const contact_name = contact.name()
+                if (contact_name) {
+                    name2RemarkCache.set(contact_name, remark)
+                }
+                await sendMessage(contact, remark, message);
             }
         }
     }
@@ -222,13 +216,12 @@ async function setupPeriodicMessageSending() {
 }
 
 await redisClient.connect();
-aliasList = await get_alias();
-console.error("alias list:", aliasList);
-if (aliasList.length === 0) {
-    console.error("No alias found in redis, exiting...");
+remarkList = await getRemarks();
+console.error("remark list:", remarkList);
+if (remarkList.length === 0) {
+    console.error("No contact found in redis, exiting...");
     process.exit(1);
 }
-
 
 try {
     const content: string = formatDate(new Date()) + " program begin\n";
@@ -245,11 +238,11 @@ bot.on('scan', onScan)
     .on('logout', onLogout)
     .on('message', onMessage)
     .on('ready', async () => {
-        log.info('onReady', 'Bot is ready, setting up periodic message sending.');
-        name2AliasCache.set(bot.currentUser.name(), 'me')
+        log.info('onReady', 'setting up timer function');
+        name2RemarkCache.set(bot.currentUser.name(), 'me')
         await setupPeriodicMessageSending();
     })
     .on('error', console.error)
     .start()
-    .then(() => log.info('StarterBot', 'Starter Bot Started.'))
+    .then(() => log.info('main', 'Started.'))
     .catch(e => log.error('handleException', e));
