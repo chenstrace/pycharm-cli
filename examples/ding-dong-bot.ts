@@ -197,7 +197,7 @@ async function processMessageQueue() {
                     remark2ContactCache.set(remark, contact);
                 }
                 else {
-                    log.error("processMessageQueue", "Contact not found for name:", remark)
+                    log.error("processMessageQueue", "Contact not found for name: %s", remark)
                 }
             }
             if (contact) {
