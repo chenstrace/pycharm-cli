@@ -193,7 +193,7 @@ async function processRemark(remark: string) {
         }
     } else {
         log.info("processRemark", "Contact.find(%s)", remark);
-        contact = await bot.Contact.find({ name: remark });
+        contact = await bot.Contact.find({ alias: remark });
         if (contact) {
             if (contact.friend()) {
                 remark2ContactCache.set(remark, contact);
