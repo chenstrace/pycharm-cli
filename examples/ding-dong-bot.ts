@@ -27,7 +27,7 @@ const allowedRoomTopics = ["几口人", "一家人"];
 
 let remarkList: string[] = []; //没有备注时，名字就是备注
 const remark2ContactCache = new Map<string, Contact>();
-const name2RemarkCache = new Map<string, string>(); //名字到备注的映射，作用是写入聊天记录的from to字段时，优先使用备注
+const id2RemarkCache = new Map<string, string>(); //id到备注的映射，作用是写入聊天记录的from to字段时，优先使用备注
 
 const redisClient = createClient({ url: REDIS_URL });
 redisClient.on('error', (err) => console.error('Redis Client Error', err));
@@ -95,6 +95,10 @@ async function onMessage(msg: Message) {
     }
     const from = msg.talker() //from
     const to = msg.listener() as Contact //to
+
+    // console.log("onMessage from ", from);
+    // console.log("onMessage to ", to);
+
     if (!from || from.type() !== bot.Contact.Type.Individual) {
         return;
     }
@@ -125,10 +129,27 @@ async function onMessage(msg: Message) {
         to_text = "!mems!"
     }
     else {
-        const from_name = from.name()
-        const to_name = to.name()
-        from_text = name2RemarkCache.get(from_name)
-        to_text = name2RemarkCache.get(to_name)
+        const from_id = from.id
+        const to_id = to.id
+        // console.log("onMessage from_id ", from_id);
+        // console.log("onMessage to_id ", to_id);
+
+        from_text = id2RemarkCache.get(from_id)
+        to_text = id2RemarkCache.get(to_id)
+
+        if (!from_text) {
+            from_text = from.name()
+        }
+        if (!from_text) {
+            from_text = await from.alias()
+        }
+
+        if (!to_text) {
+            to_text = to.name()
+        }
+        if (!to_text) {
+            to_text = await to.alias()
+        }
     }
 
     const content: string = `${formatDate(new Date())} | f(${from_text}), t(${to_text}): ${message}\n`;
@@ -185,19 +206,23 @@ async function processRemark(remark: string) {
     let contact = remark2ContactCache.get(remark);
 
     if (contact) {
-        log.info("processRemark", "got (%s) from cache", remark);
-
-        const contact_name = contact.name();
-        if (contact_name) {
-            name2RemarkCache.set(contact_name, remark);
+        // log.info("processRemark", "got (%s) from cache", remark);
+        // console.log("processRemark from cache", remark, contact);
+        if (contact.id) {
+            // console.log("processRemark from cache,contact_id", contact_id);
+            id2RemarkCache.set(contact.id, remark);
         }
     } else {
         log.info("processRemark", "Contact.find(%s)", remark);
         contact = await bot.Contact.find({ alias: remark });
         if (contact) {
+            if (contact.id) {
+                id2RemarkCache.set(contact.id, remark);
+                // console.log("processRemark set contact id to cache:", contact.id, remark);
+            }
             if (contact.friend()) {
                 remark2ContactCache.set(remark, contact);
-                log.info("processRemark", "Contact.find(%s) OK", remark);
+                // console.log("processRemark found contact:", contact);
             }
             else {
                 log.info("processRemark", "found (%s), but NOT friend, SYNC", remark);
@@ -209,7 +234,7 @@ async function processRemark(remark: string) {
 
         }
     }
-    console.log("processRemark return ", contact);
+    // console.log("processRemark return ", contact);
 
     return contact;
 }
@@ -223,13 +248,10 @@ async function processMessageQueue() {
     for (const remark of remarkList) {
         let message;
         while ((message = await redisClient.lPop(remark))) {
-            // let success = false;
-
             const contact = await processRemark(remark);
             if (contact) {
                 await sendMessage(contact, remark, message);
             }
-
         }
     }
 }
@@ -269,7 +291,7 @@ bot.on('scan', onScan)
             console.error("Error writing ready to file", err);
         }
 
-        name2RemarkCache.set(bot.currentUser.name(), 'me')
+        id2RemarkCache.set(bot.currentUser.id, 'me')
         // await initCache();
         await setupPeriodicMessageSending();
     })
