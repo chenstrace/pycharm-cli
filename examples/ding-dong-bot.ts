@@ -4,19 +4,13 @@ import 'dotenv/config.js'
 import { createClient } from 'redis'
 import { promises as fs } from 'fs'
 
-import {
-    Contact,
-    Message,
-    ScanStatus,
-    WechatyBuilder,
-    log,
-} from 'wechaty'
+import { Contact, log, Message, ScanStatus, WechatyBuilder } from 'wechaty'
 
-import qrcodeTerminal from 'qrcode-terminal';
-import { FileBox } from "file-box";
+import qrcodeTerminal from 'qrcode-terminal'
+import { FileBox } from 'file-box'
 
+import * as os from 'os'
 
-import * as os from 'os';
 const HOME_DIR = os.homedir();
 
 const MSG_FILE = `${HOME_DIR}/all.txt`;
@@ -126,7 +120,7 @@ async function onMessage(msg: Message) {
 
     if (is_room_msg) {
         from_text = from.name()
-        to_text = "!mems!"
+        to_text = "!members!"
     }
     else {
         const from_id = from.id
@@ -191,13 +185,12 @@ async function sendMessage(contact: Contact, remark: string, message: string) {
 
     log.info('sendMessage', `Sent(${remark}): ${message}`);
     const from_text = "me"
-    const to_text = remark
-    const content: string = `${formatDate(new Date())} | f(${from_text}), t(${to_text}): ${message}\n`;
+    const content: string = `${formatDate(new Date())} | f(${from_text}), t(${remark}): ${message}\n`;
 
     try {
         await fs.appendFile(MSG_FILE, content, { flush: true });
     } catch (err) {
-        log.error('FileWrite', 'Error writing outting message to file', err);
+        log.error('FileWrite', 'Error writing outing message to file', err);
     }
     return true;
 }
