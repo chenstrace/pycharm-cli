@@ -212,24 +212,24 @@ async function processSpecialRemark (remarkType: RemarkType, message: string): P
         return [ contact, name, msg ]
     } else {
         if (remarkType === RemarkType.OTHER) {
+            log.info('processSpecialRemark', 'Doing bot.findPerson(%s)', name)
             contact = await bot.Contact.find({ name })
         } else {
             // RemarkType.GROUP
+            log.info('processSpecialRemark', 'Doing bot.findGroup(%s)', name)
             contact = await bot.Room.find({ topic: name })
         }
         if (contact) {
             if (contact instanceof bot.Contact) {
-                log.info('processSpecialRemark', 'bot.Contact.findPerson(%s) SUCCESS, result:%s', name, JSON.stringify(contact))
+                log.info('processSpecialRemark', 'bot.findPerson(%s) SUCCESS, result:%s', name, JSON.stringify(contact))
                 if (contact.friend()) {
                     id2RemarkCache.set(contact.id, name)
                     name2ContactCache.set(name, contact)
                 }
             } else if (contact instanceof bot.Room) {
-                log.info('processSpecialRemark', 'bot.Room.findGroup(%s) SUCCESS, result:%s', name, JSON.stringify(contact))
+                log.info('processSpecialRemark', 'bot.findGroup(%s) SUCCESS, result:%s', name, JSON.stringify(contact))
                 const topic = await contact.topic()
-                log.info('processSpecialRemark', 'bot.Room.findGroup(%s) SUCCESS, topic: %s', name, topic)
                 if (topic === name) {
-                    log.info('processSpecialRemark', 'set room to cache')
                     id2RemarkCache.set(contact.id, name)
                     name2ContactCache.set(name, contact)
                 }
