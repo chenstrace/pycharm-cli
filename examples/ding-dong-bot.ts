@@ -3,28 +3,22 @@
 import 'dotenv/config.js'
 import { createClient } from 'redis'
 import { promises as fs } from 'fs'
-
-import { Contact, log, Message, ScanStatus, WechatyBuilder } from 'wechaty'
-
+import { Contact, log, Message, ScanStatus, Wechaty, WechatyBuilder } from 'wechaty'
 import qrcodeTerminal from 'qrcode-terminal'
 import { FileBox } from 'file-box'
 
 import * as os from 'os'
 
 const HOME_DIR = os.homedir()
-
 const MSG_FILE = `${HOME_DIR}/all.txt`
 const ATT_SAVE_DIR = `${HOME_DIR}/attachments/`
 const REDIS_URL = 'redis://127.0.0.1:6379'
 const REDIS_REMARK_KEY = 'remark_list'
 const allowedRoomTopics = [ '几口人', '一家人' ]
 
-let remarkList: string[] = [] //没有备注时，名字就是备注
+let remarkList: string[] = [] // 没有备注时，名字就是备注
 const remark2ContactCache = new Map<string, Contact>()
-const id2RemarkCache = new Map<string, string>() //id到备注的映射，作用是写入聊天记录的from to字段时，优先使用备注
-
-const redisClient = createClient({ url: REDIS_URL })
-redisClient.on('error', (err) => console.error('Redis Client Error', err))
+const id2RemarkCache = new Map<string, string>() // id到备注的映射，作用是写入聊天记录的from to字段时，优先使用备注
 
 async function getRemarks () {
     try {
@@ -32,7 +26,7 @@ async function getRemarks () {
         return result
     } catch (error) {
         console.error('Redis error:', error)
-    } finally {
+    } finally { /* empty */
     }
     return []
 }
@@ -70,41 +64,40 @@ function formatDate (date: Date): string {
     return `${year}-${month}-${day} ${hour}:${minute}:${second}`
 }
 
-async function is_message_should_be_handled (msg: Message): Promise<[ boolean, boolean ]> {
+async function isMessageShouldBeHandled (msg: Message): Promise<[ boolean, boolean ]> {
     const room = msg.room()
     if (room) {
-        const room_topic: string = await room.topic()
-        return [ allowedRoomTopics.includes(room_topic), true ]
+        const roomTopic: string = await room.topic()
+        return [ allowedRoomTopics.includes(roomTopic), true ]
     }
 
     return [ true, false ]
 }
 
 async function onMessage (msg: Message) {
-
-    const [ should_be_handled, is_room_msg ] = await is_message_should_be_handled(msg)
-    if (!should_be_handled) {
+    const [ shouldBeHandled, isRoomMsg ] = await isMessageShouldBeHandled(msg)
+    if (!shouldBeHandled) {
         return
     }
-    const from = msg.talker() //from
-    const to = msg.listener() as Contact //to
+    const from = msg.talker() // from
+    const to = msg.listener() as Contact // to
 
     // console.log("onMessage from ", from);
     // console.log("onMessage to ", to);
 
-    if (!from || from.type() !== bot.Contact.Type.Individual) {
+    if (from.type() !== bot.Contact.Type.Individual) {
         return
     }
-    const msg_type = msg.type()
+    const msgType = msg.type()
     let message: string = ''
-    if (msg_type === bot.Message.Type.Text) {
+    if (msgType === bot.Message.Type.Text) {
         message = msg.text()
-    } else if (msg_type === bot.Message.Type.Image || msg_type == bot.Message.Type.Video || msg_type == bot.Message.Type.Audio) {
+    } else if (msgType === bot.Message.Type.Image || msgType === bot.Message.Type.Video || msgType === bot.Message.Type.Audio) {
         const fileBox = await msg.toFileBox()
         const fileName = fileBox.name
-        const save_path = ATT_SAVE_DIR + fileName
-        await fileBox.toFile(save_path)
-        message = save_path
+        const savePath = ATT_SAVE_DIR + fileName
+        await fileBox.toFile(savePath)
+        message = savePath
     } else {
         return
     }
@@ -112,37 +105,18 @@ async function onMessage (msg: Message) {
         return
     }
 
-    let from_text
-    let to_text
+    let fromText: string
+    let toText: string
 
-    if (is_room_msg) {
-        from_text = from.name()
-        to_text = '!members!'
+    if (isRoomMsg) {
+        fromText = from.name()
+        toText = '!members!'
     } else {
-        const from_id = from.id
-        const to_id = to.id
-        // console.log("onMessage from_id ", from_id);
-        // console.log("onMessage to_id ", to_id);
-
-        from_text = id2RemarkCache.get(from_id)
-        to_text = id2RemarkCache.get(to_id)
-
-        if (!from_text) {
-            from_text = from.name()
-        }
-        if (!from_text) {
-            from_text = await from.alias()
-        }
-
-        if (!to_text) {
-            to_text = to.name()
-        }
-        if (!to_text) {
-            to_text = await to.alias()
-        }
+        fromText = id2RemarkCache.get(from.id) || from.name() || await from.alias() || ''
+        toText = id2RemarkCache.get(to.id) || to.name() || await to.alias() || ''
     }
 
-    const content: string = `${formatDate(new Date())} | f(${from_text}), t(${to_text}): ${message}\n`
+    const content: string = `${formatDate(new Date())} | f(${fromText}), t(${toText}): ${message}\n`
 
     try {
         await fs.appendFile(MSG_FILE, content, { flush: true })
@@ -157,13 +131,13 @@ async function onMessage (msg: Message) {
     }
 }
 
-async function sendMessage (contact: Contact, remark: string, message: string) {
+async function sendMessage (contact: Contact, toContactText: string, message: string) {
     try {
         if (message.startsWith('paste ')) {
-            const file_path = message.replace('paste ', '')
-            const file_stat = await fs.stat(file_path)
-            if (file_stat.isFile()) {
-                const fileBox = FileBox.fromFile(file_path)
+            const filePath = message.replace('paste ', '')
+            const fileStat = await fs.stat(filePath)
+            if (fileStat.isFile()) {
+                const fileBox = FileBox.fromFile(filePath)
                 await contact.say(fileBox)
             } else {
                 console.error('not file')
@@ -173,13 +147,13 @@ async function sendMessage (contact: Contact, remark: string, message: string) {
             await contact.say(message)
         }
     } catch (err) {
-        log.error('RedisQueue', 'Error sending(%s): %s', remark, message)
+        log.error('RedisQueue', 'Error sending(%s): %s', toContactText, message)
         return false
     }
 
-    log.info('sendMessage', `Sent(${remark}): ${message}`)
-    const from_text = 'me'
-    const content: string = `${formatDate(new Date())} | f(${from_text}), t(${remark}): ${message}\n`
+    log.info('sendMessage', `Sent(${toContactText}): ${message}`)
+    const fromText = 'me'
+    const content: string = `${formatDate(new Date())} | f(${fromText}), t(${toContactText}): ${message}\n`
 
     try {
         await fs.appendFile(MSG_FILE, content, { flush: true })
@@ -189,54 +163,54 @@ async function sendMessage (contact: Contact, remark: string, message: string) {
     return true
 }
 
-async function processRemark (remark: string, message: string):Promise<[Contact | undefined, string]> {
-    if (remark == 'other') {
-        const nameStartIndex = message.indexOf('#')
-        const nameEndIndex = message.indexOf('#', nameStartIndex + 1)
+async function processOtherRemark (message: string): Promise<[ Contact | undefined, string, string ]> {
+    const nameStartIndex = message.indexOf('#')
+    const nameEndIndex = message.indexOf('#', nameStartIndex + 1)
 
-        if (nameStartIndex === -1) {
-            log.error('other:', 'first # NOT found')
-            return [ undefined, '' ]
-        }
-        if (nameEndIndex === -1) {
-            log.error('other:', 'second # NOT found')
-            return [ undefined, '' ]
-        }
-        const name = message.substring(nameStartIndex + 1, nameEndIndex)
-
-        if (!name) {
-            log.error('other:', 'parse name error')
-            return [ undefined, '' ]
-        }
-        const content = message.substring(nameEndIndex + 1).trim()
-
-        if (!content) {
-            log.error('other:', 'parse content error')
-            return [ undefined, '' ]
-        }
-
-        console.error('other parsed name:', name)
-        console.error('other parsed content:', content)
-
-        const c = await bot.Contact.find({ name: name })
-        console.log('other find contact res:', c)
-        if (c && c.friend()) {
-            id2RemarkCache.set(c.id, name)
-        }
-        return [ c || undefined, content ]
+    if (nameStartIndex === -1) {
+        log.error('processOtherRemark:', 'first # NOT found')
+        return [ undefined, '', '' ]
     }
+    if (nameEndIndex === -1) {
+        log.error('processOtherRemark:', 'second # NOT found')
+        return [ undefined, '', '' ]
+    }
+    const name = message.substring(nameStartIndex + 1, nameEndIndex)
+
+    if (!name) {
+        log.error('processOtherRemark:', 'parse name error')
+        return [ undefined, '', '' ]
+    }
+    const msg = message.substring(nameEndIndex + 1).trim()
+
+    if (!msg) {
+        log.error('processOtherRemark:', 'parse msg error')
+        return [ undefined, '', '' ]
+    }
+    console.error('processOtherRemark: parsed name:', name)
+    console.error('processOtherRemark: parsed content:', msg)
+
+    const contact = await bot.Contact.find({ name })
+    console.error('processOtherRemark: contact result:', contact)
+    if (contact && contact.friend()) {
+        id2RemarkCache.set(contact.id, name)
+    }
+    return [ contact, name, msg ]
+}
+
+async function processSpecificRemark (remark: string) {
 
     let contact = remark2ContactCache.get(remark)
 
     if (contact) {
-        // log.info("processRemark", "got (%s) from cache", remark);
-        // console.log("processRemark from cache", remark, contact);
+        // log.info("processSpecificRemark", "got (%s) from cache", remark);
+        // console.log("processSpecificRemark from cache", remark, contact);
         if (contact.id) {
-            // console.log("processRemark from cache,contact_id", contact_id);
+            // console.log("processSpecificRemark from cache,contact_id", contact_id);
             id2RemarkCache.set(contact.id, remark)
         }
     } else {
-        log.info('processRemark', 'Contact.find(%s)', remark)
+        log.info('processSpecificRemark', 'Contact.find(%s)', remark)
         contact = await bot.Contact.find({ alias: remark })
         if (contact) {
             if (contact.id) {
@@ -247,17 +221,16 @@ async function processRemark (remark: string, message: string):Promise<[Contact 
                 remark2ContactCache.set(remark, contact)
                 // console.log("processRemark found contact:", contact);
             } else {
-                log.info('processRemark', 'found (%s), but NOT friend, SYNC', remark)
+                log.info('processSpecificRemark', 'found (%s), but NOT friend, SYNC', remark)
                 await contact.sync()
             }
         } else {
-            log.error('processRemark', 'Contact.find(%s) FAIL', remark)
-
+            log.error('processSpecificRemark', 'Contact.find(%s) FAIL', remark)
         }
     }
-    // console.log("processRemark return ", contact);
+    console.error('processSpecificRemark return ', contact)
 
-    return [ contact || undefined, message ]
+    return contact
 }
 
 async function processMessageQueue () {
@@ -265,55 +238,79 @@ async function processMessageQueue () {
 
     log.info('processMessageQueue', 'Processing message queue...')
     for (const remark of remarkList) {
-        let message
+        let message: string | null = ''
+        let contact: Contact | undefined
+        let toContactText = ''
         while ((message = await redisClient.lPop(remark))) {
-            const [ contact, content ] = await processRemark(remark, message)
-            if (contact && content) {
-                await sendMessage(contact, remark, content)
+            if (remark === 'other') {
+                [ contact, toContactText, message ] = await processOtherRemark(message)
+            } else {
+                contact = await processSpecificRemark(remark)
+                toContactText = remark
+            }
+
+            if (contact && message) {
+                await sendMessage(contact, toContactText, message)
+            } else {
+                console.error('processMessageQueue', 'sendMessage failed:', contact, message)
             }
         }
     }
 }
 
 async function setupPeriodicMessageSending () {
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
     setInterval(processMessageQueue, 3000)
 }
 
-await redisClient.connect()
-remarkList = await getRemarks()
-console.error('remark list:', remarkList)
-if (remarkList.length === 0) {
-    console.error('No contact found in redis, exiting...')
-    process.exit(1)
+async function onReady () {
+    log.info('onReady', 'setting up timer')
+
+    try {
+        const content: string = formatDate(new Date()) + ' Program ready\n'
+        await fs.appendFile(MSG_FILE, content, { flush: true })
+    } catch (err) {
+        console.error('Error writing ready to file', err)
+    }
+
+    id2RemarkCache.set(bot.currentUser.id, 'me')
+    await setupPeriodicMessageSending()
+
 }
 
-try {
-    const content: string = formatDate(new Date()) + ' program begin\n'
-    await fs.appendFile(MSG_FILE, content, { flush: true })
-} catch (err) {
-    console.error('Error writing program begin to file', err)
+async function main (bot: Wechaty) {
+    remarkList = await getRemarks()
+    console.error('remark list:', remarkList)
+    if (remarkList.length === 0) {
+        console.error('No contact found in redis, exiting...')
+        process.exit(1)
+    }
+
+    try {
+        const content: string = formatDate(new Date()) + ' Program begin\n'
+        await fs.appendFile(MSG_FILE, content, { flush: true })
+    } catch (err) {
+        console.error('Error writing program begin to file', err)
+    }
+
+    bot.on('scan', onScan)
+    bot.on('login', onLogin)
+    bot.on('logout', onLogout)
+    bot.on('error', console.error)
+    bot.on('message', onMessage)
+    bot.on('ready', onReady)
+    try {
+        await bot.start()
+        log.info('main', 'Started.')
+    } catch (e) {
+        log.error('handleException', e)
+    }
 }
+
+const redisClient = createClient({ url: REDIS_URL })
+redisClient.on('error', (err) => console.error('Redis Client Error', err))
+await redisClient.connect()
+
 const bot = WechatyBuilder.build({ name: 'ding-dong-bot' })
 
-bot.on('scan', onScan)
-  .on('login', onLogin)
-  .on('logout', onLogout)
-  .on('message', onMessage)
-  .on('ready', async () => {
-      log.info('onReady', 'setting up timer')
-
-      try {
-          const content: string = formatDate(new Date()) + ' program ready\n'
-          await fs.appendFile(MSG_FILE, content, { flush: true })
-      } catch (err) {
-          console.error('Error writing ready to file', err)
-      }
-
-      id2RemarkCache.set(bot.currentUser.id, 'me')
-      // await initCache();
-      await setupPeriodicMessageSending()
-  })
-  .on('error', console.error)
-  .start()
-  .then(() => log.info('main', 'Started.'))
-  .catch(e => log.error('handleException', e))
+await main(bot)
