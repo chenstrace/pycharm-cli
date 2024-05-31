@@ -87,15 +87,14 @@ async function onMessage (msg: Message) {
     if (!shouldBeHandled) {
         return
     }
-    const from = msg.talker() // from
-    const to = msg.listener() as Contact// to
-
-    log.info('onMessage', 'from:%s', JSON.stringify(from))
-    log.info('onMessage', 'to:%s', JSON.stringify(to))
+    const from = msg.talker()
+    const to = msg.listener() as Contact
 
     if (from.type() !== bot.Contact.Type.Individual) {
         return
     }
+    log.info('onMessage', 'from:%s', JSON.stringify(from))
+    log.info('onMessage', 'to:%s', JSON.stringify(to))
     const msgType = msg.type()
     let message: string = ''
     if (msgType === bot.Message.Type.Text) {
