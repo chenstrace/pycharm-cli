@@ -211,8 +211,12 @@ async function processSpecialRemark (remarkType: RemarkType, message: string): P
         return [ contact, name, msg ]
     } else {
         if (remarkType === RemarkType.OTHER) {
-            log.info('processSpecialRemark', 'Doing bot.findPerson(%s)', name)
+            log.info('processSpecialRemark', 'Doing bot.findPersonByName(%s)', name)
             contact = await bot.Contact.find({ name })
+            if (!contact) {
+                log.error('processSpecialRemark', 'bot.findPersonByName(%s) FAILED, try to findByAlias', name)
+                contact = await bot.Contact.find({ alias: name })
+            }
         } else {
             // RemarkType.GROUP
             log.info('processSpecialRemark', 'Doing bot.findGroup(%s)', name)
