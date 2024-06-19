@@ -20,7 +20,7 @@ const MSG_FILE = `${HOME_DIR}/all.txt`
 const ATT_SAVE_DIR = `${HOME_DIR}/attachments/`
 const REDIS_URL = 'redis://127.0.0.1:6379'
 const REDIS_REMARK_KEY = 'remark_list'
-const allowedRoomTopics = [ '几口人', '一家人' ]
+const allowedRoomTopics = [ '几口人', '一家人', '2024年幼升小交流讨论群' ]
 
 let remarkList: string[] = [] // 没有备注时，名字就是备注
 const remark2ContactCache = new Map<string, Contact>()
@@ -140,16 +140,30 @@ async function onMessage (msg: Message) {
     }
 }
 
+async function sendFileMessage (contact: Contact | Room, filePath: string) {
+    try {
+        const fileStat = await fs.stat(filePath)
+        if (fileStat.isFile()) {
+            const fileBox = FileBox.fromFile(filePath)
+            await contact.say(fileBox)
+        } else {
+            log.error('sendFileMessage', 'Not a file:', filePath)
+            return false
+        }
+    } catch (err) {
+        // @ts-ignore
+        log.error('sendFileMessage', 'Error sending file(%s): %s', filePath, err.message)
+        return false
+    }
+    return true
+}
+
 async function sendMessage (contact: Contact | Room, toText: string, message: string) {
     try {
-        if (message.startsWith('paste ')) {
-            const filePath = message.replace('paste ', '')
-            const fileStat = await fs.stat(filePath)
-            if (fileStat.isFile()) {
-                const fileBox = FileBox.fromFile(filePath)
-                await contact.say(fileBox)
-            } else {
-                log.error('sendMessage', 'paste message but NOT file')
+        if (message.startsWith('paste ') || message.startsWith('sendfile ')) {
+            const command = message.split(' ')[0]
+            const filePath = message.replace(`${command} `, '')
+            if (!await sendFileMessage(contact, filePath)) {
                 return false
             }
         } else {
@@ -157,7 +171,7 @@ async function sendMessage (contact: Contact | Room, toText: string, message: st
         }
     } catch (err) {
         // @ts-ignore
-        log.error('sendMessage', 'Error sending(%s): %s, %s', toText, message, err.message)
+        log.error('sendMessage', 'Error sending: %s, %s', message, err.message)
         return false
     }
 
