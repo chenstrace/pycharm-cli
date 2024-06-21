@@ -99,16 +99,19 @@ async function onMessage (msg: Message) {
     let message: string = ''
     if (msgType === bot.Message.Type.Text) {
         message = msg.text()
-    } else if (msgType === bot.Message.Type.Image || msgType === bot.Message.Type.Video || msgType === bot.Message.Type.Audio) {
+    } else if (msgType === bot.Message.Type.Image
+      || msgType === bot.Message.Type.Video
+      || msgType === bot.Message.Type.Audio
+      || msgType === bot.Message.Type.Attachment
+    ) {
         const fileBox = await msg.toFileBox()
         const fileName = fileBox.name
         const savePath = ATT_SAVE_DIR + fileName
         await fileBox.toFile(savePath)
         message = savePath
+    } else if (msgType === bot.Message.Type.Emoticon) {
+        message = '[表情]'
     } else {
-        return
-    }
-    if (!message) {
         return
     }
 
