@@ -9,6 +9,9 @@ import { FileBox } from 'file-box'
 
 import * as os from 'os'
 
+import path from 'path'
+import { format } from 'date-fns'
+
 enum RemarkType {
     NORMAL = 1,
     OTHER = 2,
@@ -22,7 +25,7 @@ const REDIS_URL = 'redis://127.0.0.1:6379'
 const REDIS_REMARK_KEY = 'remark_list'
 const allowedRoomTopics = [ '几口人', '一家人', '2024年幼升小交流讨论群' ]
 
-let remarkList: string[] = [] // 没有备注时，名字就是备注
+let remarkList: string[] = []
 const remark2ContactCache = new Map<string, Contact>()
 const id2RemarkCache = new Map<string, string>() // id到备注的映射，作用是写入聊天记录的from to字段时，优先使用备注
 const name2ContactCache = new Map<string, Contact | Room>()
@@ -62,14 +65,7 @@ function onLogout (user: Contact) {
 }
 
 function formatDate (date: Date): string {
-    const year: string = date.getFullYear().toString()
-    const month: string = (date.getMonth() + 1).toString().padStart(2, '0')
-    const day: string = date.getDate().toString().padStart(2, '0')
-    const hour: string = date.getHours().toString().padStart(2, '0')
-    const minute: string = date.getMinutes().toString().padStart(2, '0')
-    const second: string = date.getSeconds().toString().padStart(2, '0')
-
-    return `${year}-${month}-${day} ${hour}:${minute}:${second}`
+    return format(date, 'yyyy-MM-dd HH:mm:ss')
 }
 
 async function isMessageShouldBeHandled (msg: Message): Promise<[ boolean, boolean ]> {
@@ -201,11 +197,11 @@ async function processSpecialRemark (remarkType: RemarkType, message: string): P
     }
 
     if (nameStartIndex === -1) {
-        log.error('processSpecialRemark', 'first # NOT found')
+        log.error('processSpecialRemark', 'wrong format, first # NOT found, msg(%s)', message)
         return [ undefined, '', '' ]
     }
     if (nameEndIndex === -1) {
-        log.error('processSpecialRemark', 'second # NOT found')
+        log.error('processSpecialRemark', 'wrong format, second # NOT found, msg(%s)', message)
         return [ undefined, '', '' ]
     }
     const name = message.substring(nameStartIndex + 1, nameEndIndex)
@@ -343,6 +339,54 @@ async function setupPeriodicMessageSending () {
     setInterval(processMessageQueue, 3000)
 }
 
+interface ContactEntry {
+    alias: string
+    name: string
+}
+
+async function processContact () {
+    const contactList = await bot.Contact.findAll()
+
+    const contactEntries: ContactEntry[] = []
+
+    for (let i = 0; i < contactList.length; i++) {
+        const contact = contactList[i]
+        if (contact && contact.type() === bot.Contact.Type.Individual && contact.friend()) {
+            const alias = await contact.alias() || ''
+            const name = contact.name()
+            const entry: ContactEntry = {
+                alias,
+                name,
+            }
+            contactEntries.push(entry)
+        }
+    }
+    const sortedEntries = contactEntries.sort((a, b) => {
+        return a.alias.toLowerCase().localeCompare(b.alias.toLowerCase())
+    })
+
+    const currentTime = new Date()
+    const formattedTime = format(currentTime, 'yyyyMMdd-HHmmss')
+    const fileName = `${formattedTime}.json`
+
+    const homeDir = os.homedir()
+    const dirPath = path.join(homeDir, 'wechaty_contacts')
+
+    try {
+        await fs.mkdir(dirPath, { recursive: true })
+        const filePath = path.join(dirPath, fileName)
+        await fs.writeFile(filePath, JSON.stringify(sortedEntries, null, 2), 'utf8')
+        log.info('processContact', `Contacts have been written to ${filePath}`)
+    } catch (error) {
+        log.error('processContact', 'Error writing to file: %s', error)
+    }
+}
+
+async function dumpContact () {
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
+    setTimeout(processContact, 1)
+}
+
 async function onReady () {
     log.info('onReady', 'setting up timer')
 
@@ -356,6 +400,7 @@ async function onReady () {
 
     id2RemarkCache.set(bot.currentUser.id, 'me')
     await setupPeriodicMessageSending()
+    await dumpContact()
 
 }
 
