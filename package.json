@@ -32,10 +32,6 @@
     "qrcode-terminal": "^0.12.0",
     "redis": "^4.6.13",
     "wechaty": "^1.18.1",
-    "wechaty-cqrs": "^0.7.5",
-    "wechaty-plugin-contrib": "^1.11.1",
-    "wechaty-puppet-walnut": "^1.11.6",
-    "wechaty-puppet-wechat": "^1.18.1",
     "wechaty-puppet-wechat4u": "~1.14.14"
   },
   "devDependencies": {
