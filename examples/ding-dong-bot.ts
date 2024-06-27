@@ -3,7 +3,7 @@
 import 'dotenv/config.js'
 import { createClient } from 'redis'
 import { promises as fs } from 'fs'
-import { Contact, Room, log, Message, ScanStatus, Wechaty, WechatyBuilder } from 'wechaty'
+import { Contact, log, Message, Room, ScanStatus, Wechaty, WechatyBuilder } from 'wechaty'
 import qrcodeTerminal from 'qrcode-terminal'
 import { FileBox } from 'file-box'
 
@@ -78,6 +78,22 @@ async function isMessageShouldBeHandled (msg: Message): Promise<[ boolean, boole
     return [ true, false ]
 }
 
+async function fileExistsAsync (filePath: string) {
+    try {
+        await fs.access(filePath)
+        return true
+    } catch (err) {
+        return false
+    }
+}
+
+async function appendTimestampToFileName (filePath: string) {
+    const parsedPath = path.parse(filePath)
+    const timestamp = Date.now()
+    const newFileName = `${parsedPath.name}_${timestamp}${parsedPath.ext}`
+    return path.join(parsedPath.dir, newFileName)
+}
+
 async function onMessage (msg: Message) {
     const [ shouldBeHandled, isRoomMsg ] = await isMessageShouldBeHandled(msg)
     if (!shouldBeHandled) {
@@ -102,7 +118,11 @@ async function onMessage (msg: Message) {
     ) {
         const fileBox = await msg.toFileBox()
         const fileName = fileBox.name
-        const savePath = ATT_SAVE_DIR + fileName
+        let savePath = ATT_SAVE_DIR + fileName
+        // 如何文件存在，则在文件名后面加上当前时间戳
+        if (await fileExistsAsync(savePath)) {
+            savePath = await appendTimestampToFileName(savePath)
+        }
         await fileBox.toFile(savePath)
         message = savePath
     } else if (msgType === bot.Message.Type.Emoticon) {
