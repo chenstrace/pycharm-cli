@@ -1,14 +1,19 @@
 #!/usr/bin/env -S node --no-warnings --loader ts-node/esm
 
 import 'dotenv/config.js'
-import { createClient } from 'redis'
+import { createClient, type RedisClientType } from 'redis'
 import { promises as fs } from 'fs'
-import { Contact, log, Message, Room, ScanStatus, Wechaty, WechatyBuilder } from 'wechaty'
-import qrcodeTerminal from 'qrcode-terminal'
-import { FileBox } from 'file-box'
+import { Contact, log, Message, Room, Wechaty, WechatyBuilder } from 'wechaty'
 
-// eslint-disable-next-line import/extensions
-import { fileExistsAsync } from './utils'
+import {
+    appendContentToFile,
+    appendTimestampToFileName,
+    fileExistsAsync,
+    formatDate,
+    sendMessage,
+} from './utils.ts'
+import { onScan, onLogin, onLogout } from './events.ts'
+import { MSG_FILE, ATT_SAVE_DIR, REDIS_URL, REDIS_REMARK_KEY, REDIS_ALLOWED_ROOM_TOPICS_KEY } from './conf.ts'
 
 import * as os from 'os'
 
@@ -21,15 +26,6 @@ enum RemarkType {
     GROUP = 3
 }
 
-const HOME_DIR = os.homedir()
-const MSG_FILE = `${HOME_DIR}/all.txt`
-const ATT_SAVE_DIR = `${HOME_DIR}/attachments/`
-const REDIS_URL = 'redis://127.0.0.1:6379'
-const REDIS_REMARK_KEY = 'remark_list'
-const REDIS_ALLOWED_ROOM_TOPICS_KEY = 'room_list'
-let allowedRoomTopics: string[] = []
-
-let remarkList: string[] = []
 const remark2ContactCache = new Map<string, Contact>()
 const id2RemarkCache = new Map<string, string>() // id到备注的映射，作用是写入聊天记录的from to字段时，优先使用备注
 const name2ContactCache = new Map<string, Contact | Room>()
@@ -54,48 +50,15 @@ async function getAllowedRoomTopics () {
     return getSetFromRedis(REDIS_ALLOWED_ROOM_TOPICS_KEY)
 }
 
-function onScan (qrcode: string, status: ScanStatus) {
-    if (status === ScanStatus.Waiting || status === ScanStatus.Timeout) {
-        const qrcodeImageUrl = [
-            'https://wechaty.js.org/qrcode/',
-            encodeURIComponent(qrcode),
-        ].join('')
-        log.info('onScan', 'ScanStatus: %s(%s) - %s', ScanStatus[status], status, qrcodeImageUrl)
-
-        qrcodeTerminal.generate(qrcode, { small: true })
-    } else {
-        log.info('onScan', 'ScanStatus: %s(%s)', ScanStatus[status], status)
-    }
-}
-
-function onLogin (user: Contact) {
-    log.info('onLogin', '%s in', user)
-}
-
-function onLogout (user: Contact) {
-    log.info('onLogout', '%s out', user)
-}
-
-function formatDate (date: Date): string {
-    return format(date, 'yyyy-MM-dd HH:mm:ss')
-}
-
 async function isMessageShouldBeHandled (msg: Message): Promise<[ boolean, boolean ]> {
     const room = msg.room()
     if (room) {
         const roomTopic: string = await room.topic()
-        allowedRoomTopics = await getAllowedRoomTopics()
+        const allowedRoomTopics = await getAllowedRoomTopics()
         return [ allowedRoomTopics.includes(roomTopic), true ]
     }
 
     return [ true, false ]
-}
-
-async function appendTimestampToFileName (filePath: string) {
-    const parsedPath = path.parse(filePath)
-    const timestamp = Date.now()
-    const newFileName = `${parsedPath.name}_${timestamp}${parsedPath.ext}`
-    return path.join(parsedPath.dir, newFileName)
 }
 
 async function onMessage (msg: Message) {
@@ -146,11 +109,12 @@ async function onMessage (msg: Message) {
         fromText = id2RemarkCache.get(from.id) || from.name() || await from.alias() || ''
         toText = id2RemarkCache.get(to.id) || to.name() || await to.alias() || ''
     }
-
-    const logContent: string = `${formatDate(new Date())} | f(${fromText}), t(${toText}): ${message}\n`
+    const date = new Date()
+    const logContent: string = `${formatDate(date)} | f(${fromText}), t(${toText}): ${message}\n`
 
     try {
         await fs.appendFile(MSG_FILE, logContent, { flush: true })
+        await appendContentToFile(logContent, date)
     } catch (err) {
         // @ts-ignore
         log.error('onMessage', 'Error writing incoming message to file: %s', err.message)
@@ -162,54 +126,6 @@ async function onMessage (msg: Message) {
         // @ts-ignore
         log.error('onMessage', 'Error incr msg count:%s', err.message)
     }
-}
-
-async function sendFileMessage (contact: Contact | Room, filePath: string) {
-    try {
-        const fileStat = await fs.stat(filePath)
-        if (fileStat.isFile()) {
-            const fileBox = FileBox.fromFile(filePath)
-            await contact.say(fileBox)
-        } else {
-            log.error('sendFileMessage', 'Not a file:', filePath)
-            return false
-        }
-    } catch (err) {
-        // @ts-ignore
-        log.error('sendFileMessage', 'Error sending file(%s): %s', filePath, err.message)
-        return false
-    }
-    return true
-}
-
-async function sendMessage (contact: Contact | Room, toText: string, message: string) {
-    try {
-        if (message.startsWith('paste ') || message.startsWith('sendfile ')) {
-            const command = message.split(' ')[0]
-            const filePath = message.replace(`${command} `, '')
-            if (!await sendFileMessage(contact, filePath)) {
-                return false
-            }
-        } else {
-            await contact.say(message)
-        }
-    } catch (err) {
-        // @ts-ignore
-        log.error('sendMessage', 'Error sending: %s, %s', message, err.message)
-        return false
-    }
-
-    log.info('sendMessage', 'Sent(%s): %s', toText, message)
-    const fromText = 'me'
-    const logContent: string = `${formatDate(new Date())} | f(${fromText}), t(${toText}): ${message}\n`
-
-    try {
-        await fs.appendFile(MSG_FILE, logContent, { flush: true })
-    } catch (err) {
-        // @ts-ignore
-        log.error('sendMessage', 'Error writing outing message to file:%s', err.message)
-    }
-    return true
 }
 
 async function processSpecialRemark (remarkType: RemarkType, message: string): Promise<[ Contact | Room | undefined, string, string ]> {
@@ -323,7 +239,7 @@ async function processNormalRemark (remark: string) {
 }
 
 async function processMessageQueue () {
-    remarkList = await getRemarks()
+    const remarkList = await getRemarks()
 
     log.info('processMessageQueue', 'Processing message queue...')
     for (const remark of remarkList) {
@@ -346,7 +262,7 @@ async function processMessageQueue () {
             }
 
             if (contact && message) {
-                await sendMessage(contact, toText, message)
+                await sendMessage(contact, toText, message, MSG_FILE)
             } else {
                 if (!contact) {
                     log.error('processMessageQueue', 'sendMessage FAILED: empty contact,message(%s)', message)
@@ -416,8 +332,10 @@ async function onReady () {
     log.info('onReady', 'setting up timer')
 
     try {
-        const content: string = formatDate(new Date()) + ' Program ready\n'
+        const date = new Date()
+        const content: string = formatDate(date) + ' Program ready\n'
         await fs.appendFile(MSG_FILE, content, { flush: true })
+        await appendContentToFile(content, date)
     } catch (err) {
         // @ts-ignore
         log.error('onReady', 'Error writing ready to file:%s', err.message)
@@ -426,19 +344,20 @@ async function onReady () {
     id2RemarkCache.set(bot.currentUser.id, 'me')
     await setupPeriodicMessageSending()
     await dumpContact()
-
 }
 
 async function main (bot: Wechaty) {
-    remarkList = await getRemarks()
+    const remarkList = await getRemarks()
     log.info('main', 'remark list: %s', remarkList.toString())
     if (remarkList.length === 0) {
         log.error('main', 'No contact found in redis')
     }
 
     try {
-        const content: string = formatDate(new Date()) + ' Program begin\n'
+        const date = new Date()
+        const content: string = formatDate(date) + ' Program begin\n'
         await fs.appendFile(MSG_FILE, content, { flush: true })
+        await appendContentToFile(content, date)
     } catch (err) {
         // @ts-ignore
         log.error('main', 'Error writing Program begin to file exception:%s', err.message)
@@ -459,7 +378,7 @@ async function main (bot: Wechaty) {
     }
 }
 
-const redisClient = createClient({ url: REDIS_URL })
+const redisClient: RedisClientType = createClient({ url: REDIS_URL })
 redisClient.on('error', (err) => console.error('Redis Client Error', err))
 await redisClient.connect()
 

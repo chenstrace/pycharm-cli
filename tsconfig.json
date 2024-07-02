@@ -2,8 +2,9 @@
   "extends": "@chatie/tsconfig",
   "compilerOptions": {
     "outDir": "dist",
-    "ignoreDeprecations": "5.0"
-
+    "ignoreDeprecations": "5.0",
+    "allowImportingTsExtensions": true,
+    "noEmit": true
   },
   "exclude": [
     "node_modules/",
@@ -15,5 +16,5 @@
     "scripts/**/*.ts",
     "src/**/*.ts",
     "tests/**/*.ts"
-  ],
+  ]
 }
