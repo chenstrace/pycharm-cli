@@ -101,4 +101,4 @@ async function sendMessage (contact: Contact | Room, toText: string, message: st
     return true
 }
 
-export { fileExistsAsync, appendContentToFile, appendTimestampToFileName, formatDate, sendFileMessage, sendMessage }
+export { fileExistsAsync, appendContentToFile, appendTimestampToFileName, formatDate, sendMessage }
