@@ -7,6 +7,9 @@ import { Contact, log, Message, Room, ScanStatus, Wechaty, WechatyBuilder } from
 import qrcodeTerminal from 'qrcode-terminal'
 import { FileBox } from 'file-box'
 
+// eslint-disable-next-line import/extensions
+import { fileExistsAsync } from './utils'
+
 import * as os from 'os'
 
 import path from 'path'
@@ -23,23 +26,32 @@ const MSG_FILE = `${HOME_DIR}/all.txt`
 const ATT_SAVE_DIR = `${HOME_DIR}/attachments/`
 const REDIS_URL = 'redis://127.0.0.1:6379'
 const REDIS_REMARK_KEY = 'remark_list'
-const allowedRoomTopics = [ '几口人', '一家人', '2024年幼升小交流讨论群' ]
+const REDIS_ALLOWED_ROOM_TOPICS_KEY = 'room_list'
+let allowedRoomTopics: string[] = []
 
 let remarkList: string[] = []
 const remark2ContactCache = new Map<string, Contact>()
 const id2RemarkCache = new Map<string, string>() // id到备注的映射，作用是写入聊天记录的from to字段时，优先使用备注
 const name2ContactCache = new Map<string, Contact | Room>()
 
-async function getRemarks () {
+async function getSetFromRedis (key: string) {
     try {
-        const result: string[] = await redisClient.sMembers(REDIS_REMARK_KEY)
+        const result: string[] = await redisClient.sMembers(key)
         return result
     } catch (error) {
         // @ts-ignore
-        log.error('getRemarks', 'Redis error:%s', error.message)
+        log.error('getSetFromRedis', 'Redis error:%s', error.message)
     } finally { /* empty */
     }
     return []
+}
+
+async function getRemarks () {
+    return getSetFromRedis(REDIS_REMARK_KEY)
+}
+
+async function getAllowedRoomTopics () {
+    return getSetFromRedis(REDIS_ALLOWED_ROOM_TOPICS_KEY)
 }
 
 function onScan (qrcode: string, status: ScanStatus) {
@@ -72,19 +84,11 @@ async function isMessageShouldBeHandled (msg: Message): Promise<[ boolean, boole
     const room = msg.room()
     if (room) {
         const roomTopic: string = await room.topic()
+        allowedRoomTopics = await getAllowedRoomTopics()
         return [ allowedRoomTopics.includes(roomTopic), true ]
     }
 
     return [ true, false ]
-}
-
-async function fileExistsAsync (filePath: string) {
-    try {
-        await fs.access(filePath)
-        return true
-    } catch (err) {
-        return false
-    }
 }
 
 async function appendTimestampToFileName (filePath: string) {
@@ -136,7 +140,8 @@ async function onMessage (msg: Message) {
 
     if (isRoomMsg) {
         fromText = from.name()
-        toText = '!members!'
+        const room = msg.room()
+        toText = room ? await room.topic() : '!members!'
     } else {
         fromText = id2RemarkCache.get(from.id) || from.name() || await from.alias() || ''
         toText = id2RemarkCache.get(to.id) || to.name() || await to.alias() || ''
