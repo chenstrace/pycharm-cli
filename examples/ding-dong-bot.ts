@@ -61,7 +61,7 @@ async function isMessageShouldBeHandled (msg: Message): Promise<[ boolean, boole
     return [ true, false ]
 }
 
-async function onMessage (msg: Message) {
+async function onMessage (msg: Message, bot: Wechaty) {
     const [ shouldBeHandled, isRoomMsg ] = await isMessageShouldBeHandled(msg)
     if (!shouldBeHandled) {
         return
@@ -128,7 +128,7 @@ async function onMessage (msg: Message) {
     }
 }
 
-async function processSpecialRemark (remarkType: RemarkType, message: string): Promise<[ Contact | Room | undefined, string, string ]> {
+async function processSpecialRemark (bot: Wechaty, remarkType: RemarkType, message: string): Promise<[ Contact | Room | undefined, string, string ]> {
     const nameStartIndex = message.indexOf('#')
     const nameEndIndex = message.indexOf('#', nameStartIndex + 1)
 
@@ -203,7 +203,7 @@ async function processSpecialRemark (remarkType: RemarkType, message: string): P
     }
 }
 
-async function processNormalRemark (remark: string) {
+async function processNormalRemark (bot: Wechaty, remark: string) {
     let contact = remark2ContactCache.get(remark)
 
     if (contact) {
@@ -238,7 +238,7 @@ async function processNormalRemark (remark: string) {
     return contact
 }
 
-async function processMessageQueue () {
+async function processMessageQueue (bot: Wechaty) {
     const remarkList = await getRemarks()
 
     log.info('processMessageQueue', 'Processing message queue...')
@@ -255,10 +255,10 @@ async function processMessageQueue () {
                 remarkType = RemarkType.GROUP
             }
             if (remarkType === RemarkType.NORMAL) {
-                contact = await processNormalRemark(remark)
+                contact = await processNormalRemark(bot, remark)
                 toText = remark
             } else {
-                [ contact, toText, message ] = await processSpecialRemark(remarkType, message)
+                [ contact, toText, message ] = await processSpecialRemark(bot, remarkType, message)
             }
 
             if (contact && message) {
@@ -275,18 +275,21 @@ async function processMessageQueue () {
     }
 }
 
-async function setupPeriodicMessageSending () {
-    // eslint-disable-next-line @typescript-eslint/no-misused-promises
-    setInterval(processMessageQueue, 3000)
+function setupPeriodicMessageSending (bot: Wechaty) {
+    setInterval(() => {
+        processMessageQueue(bot).catch(error => {
+            console.error('Error in processMessageQueue:', error)
+        })
+    }, 3000)
 }
 
-interface ContactEntry {
-    alias: string
-    name: string
-}
-
-async function processContact () {
+async function processContact (bot: Wechaty) {
     const contactList = await bot.Contact.findAll()
+
+    interface ContactEntry {
+        alias: string
+        name: string
+    }
 
     const contactEntries: ContactEntry[] = []
 
@@ -323,12 +326,15 @@ async function processContact () {
     }
 }
 
-async function dumpContact () {
-    // eslint-disable-next-line @typescript-eslint/no-misused-promises
-    setTimeout(processContact, 1)
+function dumpContact (bot: Wechaty) {
+    setTimeout(() => {
+        processContact(bot).catch(error => {
+            console.error('Error in processContact:', error)
+        })
+    }, 1)
 }
 
-async function onReady () {
+async function onReady (bot: Wechaty) {
     log.info('onReady', 'setting up timer')
 
     try {
@@ -342,11 +348,13 @@ async function onReady () {
     }
 
     id2RemarkCache.set(bot.currentUser.id, 'me')
-    await setupPeriodicMessageSending()
-    await dumpContact()
+    setupPeriodicMessageSending(bot)
+    dumpContact(bot)
 }
 
-async function main (bot: Wechaty) {
+async function main () {
+    const bot = WechatyBuilder.build({ name: 'ding-dong-bot' })
+
     const remarkList = await getRemarks()
     log.info('main', 'remark list: %s', remarkList.toString())
     if (remarkList.length === 0) {
@@ -367,8 +375,8 @@ async function main (bot: Wechaty) {
     bot.on('login', onLogin)
     bot.on('logout', onLogout)
     bot.on('error', console.error)
-    bot.on('message', onMessage)
-    bot.on('ready', onReady)
+    bot.on('message', msg => onMessage(msg, bot))
+    bot.on('ready', () => onReady(bot))
     try {
         await bot.start()
         log.info('main', 'Started.')
@@ -382,6 +390,4 @@ const redisClient: RedisClientType = createClient({ url: REDIS_URL })
 redisClient.on('error', (err) => console.error('Redis Client Error', err))
 await redisClient.connect()
 
-const bot = WechatyBuilder.build({ name: 'ding-dong-bot' })
-
-await main(bot)
+await main()
