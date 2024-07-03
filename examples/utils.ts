@@ -5,7 +5,7 @@ import { homedir } from 'os'
 import { Contact, log, Room } from 'wechaty'
 import { FileBox } from 'file-box'
 
-async function fileExistsAsync (filePath: string) {
+async function fileExists (filePath: string) {
     try {
         await fs.access(filePath)
         return true
@@ -101,4 +101,4 @@ async function sendMessage (contact: Contact | Room, toText: string, message: st
     return true
 }
 
-export { fileExistsAsync, appendContentToFile, appendTimestampToFileName, formatDate, sendMessage }
+export { fileExists, appendContentToFile, appendTimestampToFileName, formatDate, sendMessage }

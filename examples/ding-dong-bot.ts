@@ -1,24 +1,27 @@
 #!/usr/bin/env -S node --no-warnings --loader ts-node/esm
 
 import 'dotenv/config.js'
-import { createClient, type RedisClientType } from 'redis'
 import { promises as fs } from 'fs'
 import { Contact, log, Message, Room, Wechaty, WechatyBuilder } from 'wechaty'
-
-import {
-    appendContentToFile,
-    appendTimestampToFileName,
-    fileExistsAsync,
-    formatDate,
-    sendMessage,
-} from './utils.ts'
-import { onScan, onLogin, onLogout } from './events.ts'
-import { MSG_FILE, ATT_SAVE_DIR, REDIS_URL, REDIS_REMARK_KEY, REDIS_ALLOWED_ROOM_TOPICS_KEY } from './conf.ts'
-
 import * as os from 'os'
 
 import path from 'path'
 import { format } from 'date-fns'
+import {
+    appendContentToFile,
+    appendTimestampToFileName,
+    fileExists,
+    formatDate,
+    sendMessage,
+} from './utils.ts'
+import { onScan, onLogin, onLogout } from './events.ts'
+import {
+    MSG_FILE,
+    ATT_SAVE_DIR,
+
+} from './conf.ts'
+
+import { BotStorage } from './bot_storage.ts'
 
 enum RemarkType {
     NORMAL = 1,
@@ -26,43 +29,19 @@ enum RemarkType {
     GROUP = 3
 }
 
-const remark2ContactCache = new Map<string, Contact>()
-const id2RemarkCache = new Map<string, string>() // id到备注的映射，作用是写入聊天记录的from to字段时，优先使用备注
-const name2ContactCache = new Map<string, Contact | Room>()
-
-async function getSetFromRedis (key: string) {
-    try {
-        const result: string[] = await redisClient.sMembers(key)
-        return result
-    } catch (error) {
-        // @ts-ignore
-        log.error('getSetFromRedis', 'Redis error:%s', error.message)
-    } finally { /* empty */
-    }
-    return []
-}
-
-async function getRemarks () {
-    return getSetFromRedis(REDIS_REMARK_KEY)
-}
-
-async function getAllowedRoomTopics () {
-    return getSetFromRedis(REDIS_ALLOWED_ROOM_TOPICS_KEY)
-}
-
-async function isMessageShouldBeHandled (msg: Message): Promise<[ boolean, boolean ]> {
+async function isMessageShouldBeHandled (msg: Message, storage: BotStorage): Promise<[ boolean, boolean ]> {
     const room = msg.room()
     if (room) {
         const roomTopic: string = await room.topic()
-        const allowedRoomTopics = await getAllowedRoomTopics()
+        const allowedRoomTopics = await storage.getAllowedRoomTopics()
         return [ allowedRoomTopics.includes(roomTopic), true ]
     }
 
     return [ true, false ]
 }
 
-async function onMessage (msg: Message, bot: Wechaty) {
-    const [ shouldBeHandled, isRoomMsg ] = await isMessageShouldBeHandled(msg)
+async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
+    const [ shouldBeHandled, isRoomMsg ] = await isMessageShouldBeHandled(msg, storage)
     if (!shouldBeHandled) {
         return
     }
@@ -87,7 +66,7 @@ async function onMessage (msg: Message, bot: Wechaty) {
         const fileName = fileBox.name
         let savePath = ATT_SAVE_DIR + fileName
         // 如何文件存在，则在文件名后面加上当前时间戳
-        if (await fileExistsAsync(savePath)) {
+        if (await fileExists(savePath)) {
             savePath = await appendTimestampToFileName(savePath)
         }
         await fileBox.toFile(savePath)
@@ -106,8 +85,8 @@ async function onMessage (msg: Message, bot: Wechaty) {
         const room = msg.room()
         toText = room ? await room.topic() : '!members!'
     } else {
-        fromText = id2RemarkCache.get(from.id) || from.name() || await from.alias() || ''
-        toText = id2RemarkCache.get(to.id) || to.name() || await to.alias() || ''
+        fromText = storage.getRemarkById(from.id) || from.name() || await from.alias() || ''
+        toText = storage.getRemarkById(to.id) || to.name() || await to.alias() || ''
     }
     const date = new Date()
     const logContent: string = `${formatDate(date)} | f(${fromText}), t(${toText}): ${message}\n`
@@ -121,14 +100,14 @@ async function onMessage (msg: Message, bot: Wechaty) {
     }
 
     try {
-        await redisClient.incr('msg_count')
+        await storage.incrMsgCount()
     } catch (err) {
         // @ts-ignore
         log.error('onMessage', 'Error incr msg count:%s', err.message)
     }
 }
 
-async function processSpecialRemark (bot: Wechaty, remarkType: RemarkType, message: string): Promise<[ Contact | Room | undefined, string, string ]> {
+async function processSpecialRemark (bot: Wechaty, storage: BotStorage, remarkType: RemarkType, message: string): Promise<[ Contact | Room | undefined, string, string ]> {
     const nameStartIndex = message.indexOf('#')
     const nameEndIndex = message.indexOf('#', nameStartIndex + 1)
 
@@ -160,7 +139,7 @@ async function processSpecialRemark (bot: Wechaty, remarkType: RemarkType, messa
     log.info('processSpecialRemark', 'parsed name: %s', name)
     log.info('processSpecialRemark', 'parsed msg: %s', msg)
 
-    let contact = name2ContactCache.get(name)
+    let contact = storage.getContactByName(name)
     if (contact) {
         return [ contact, name, msg ]
     } else {
@@ -180,15 +159,15 @@ async function processSpecialRemark (bot: Wechaty, remarkType: RemarkType, messa
             if (contact instanceof bot.Contact) {
                 log.info('processSpecialRemark', 'bot.findPerson(%s) SUCCESS, result:%s', name, JSON.stringify(contact))
                 if (contact.friend()) {
-                    id2RemarkCache.set(contact.id, name)
-                    name2ContactCache.set(name, contact)
+                    storage.setId2Remark(contact.id, name)
+                    storage.setName2Contact(name, contact)
                 }
             } else if (contact instanceof bot.Room) {
                 log.info('processSpecialRemark', 'bot.findGroup(%s) SUCCESS, result:%s', name, JSON.stringify(contact))
                 const topic = await contact.topic()
                 if (topic === name) {
-                    id2RemarkCache.set(contact.id, name)
-                    name2ContactCache.set(name, contact)
+                    storage.setId2Remark(contact.id, name)
+                    storage.setName2Contact(name, contact)
                 }
             }
         } else {
@@ -203,13 +182,13 @@ async function processSpecialRemark (bot: Wechaty, remarkType: RemarkType, messa
     }
 }
 
-async function processNormalRemark (bot: Wechaty, remark: string) {
-    let contact = remark2ContactCache.get(remark)
+async function processNormalRemark (bot: Wechaty, storage: BotStorage, remark: string) {
+    let contact = storage.getContactByRemark(remark)
 
     if (contact) {
         log.info('processNormalRemark', 'Got (%s) from remark2ContactCache: (%s)', remark, JSON.stringify(contact))
         if (contact.id) {
-            id2RemarkCache.set(contact.id, remark)
+            storage.setId2Remark(contact.id, remark)
         }
     } else {
         log.info('processNormalRemark', 'Doing bot.findByAlias(%s)', remark)
@@ -218,14 +197,14 @@ async function processNormalRemark (bot: Wechaty, remark: string) {
             log.info('processNormalRemark', 'bot.findByAlias(%s) SUCCESS, result:%s', remark, JSON.stringify(contact))
 
             if (contact.id) {
-                id2RemarkCache.set(contact.id, remark)
+                storage.setId2Remark(contact.id, remark)
             }
 
             if (contact.friend()) {
-                remark2ContactCache.set(remark, contact)
+                storage.setRemark2Contact(remark, contact)
                 const contactName = contact.name()
                 if (contactName) {
-                    name2ContactCache.set(contactName, contact)
+                    storage.setName2Contact(contactName, contact)
                 }
             } else {
                 log.info('processNormalRemark', 'bot.findByAlias(%s) found, but NOT friend, SYNC', remark)
@@ -238,8 +217,8 @@ async function processNormalRemark (bot: Wechaty, remark: string) {
     return contact
 }
 
-async function processMessageQueue (bot: Wechaty) {
-    const remarkList = await getRemarks()
+async function processMessageQueue (bot: Wechaty, storage: BotStorage) {
+    const remarkList = await storage.getRemarks()
 
     log.info('processMessageQueue', 'Processing message queue...')
     for (const remark of remarkList) {
@@ -248,17 +227,17 @@ async function processMessageQueue (bot: Wechaty) {
         let toText = ''
         let remarkType = RemarkType.NORMAL
 
-        while ((message = await redisClient.lPop(remark))) {
+        while ((message = await storage.lPopMsg(remark))) {
             if (remark === 'other') {
                 remarkType = RemarkType.OTHER
             } else if (remark === 'group') {
                 remarkType = RemarkType.GROUP
             }
             if (remarkType === RemarkType.NORMAL) {
-                contact = await processNormalRemark(bot, remark)
+                contact = await processNormalRemark(bot, storage, remark)
                 toText = remark
             } else {
-                [ contact, toText, message ] = await processSpecialRemark(bot, remarkType, message)
+                [ contact, toText, message ] = await processSpecialRemark(bot, storage, remarkType, message)
             }
 
             if (contact && message) {
@@ -275,9 +254,9 @@ async function processMessageQueue (bot: Wechaty) {
     }
 }
 
-function setupPeriodicMessageSending (bot: Wechaty) {
+function setupPeriodicMessageSending (bot: Wechaty, storage: BotStorage) {
     setInterval(() => {
-        processMessageQueue(bot).catch(error => {
+        processMessageQueue(bot, storage).catch(error => {
             console.error('Error in processMessageQueue:', error)
         })
     }, 3000)
@@ -334,7 +313,7 @@ function dumpContact (bot: Wechaty) {
     }, 1)
 }
 
-async function onReady (bot: Wechaty) {
+async function onReady (bot: Wechaty, storage: BotStorage) {
     log.info('onReady', 'setting up timer')
 
     try {
@@ -347,15 +326,16 @@ async function onReady (bot: Wechaty) {
         log.error('onReady', 'Error writing ready to file:%s', err.message)
     }
 
-    id2RemarkCache.set(bot.currentUser.id, 'me')
-    setupPeriodicMessageSending(bot)
+    storage.setId2Remark(bot.currentUser.id, 'me')
+    setupPeriodicMessageSending(bot, storage)
     dumpContact(bot)
 }
 
 async function main () {
     const bot = WechatyBuilder.build({ name: 'ding-dong-bot' })
-
-    const remarkList = await getRemarks()
+    const storage = new BotStorage()
+    await storage.init()
+    const remarkList = await storage.getRemarks()
     log.info('main', 'remark list: %s', remarkList.toString())
     if (remarkList.length === 0) {
         log.error('main', 'No contact found in redis')
@@ -375,8 +355,8 @@ async function main () {
     bot.on('login', onLogin)
     bot.on('logout', onLogout)
     bot.on('error', console.error)
-    bot.on('message', msg => onMessage(msg, bot))
-    bot.on('ready', () => onReady(bot))
+    bot.on('message', msg => onMessage(msg, bot, storage))
+    bot.on('ready', () => onReady(bot, storage))
     try {
         await bot.start()
         log.info('main', 'Started.')
@@ -385,9 +365,5 @@ async function main () {
         log.error('main', 'bot.start() exception:%s', e.message)
     }
 }
-
-const redisClient: RedisClientType = createClient({ url: REDIS_URL })
-redisClient.on('error', (err) => console.error('Redis Client Error', err))
-await redisClient.connect()
 
 await main()
