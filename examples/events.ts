@@ -16,7 +16,7 @@ export function onScan (qrcode: string, status: ScanStatus) {
 }
 
 export function onLogin (user: Contact) {
-    log.info('onLogin', '%s in', user)
+    log.info('onLogin', '%s(%s) in', user, user.id)
 }
 
 export function onLogout (user: Contact) {
