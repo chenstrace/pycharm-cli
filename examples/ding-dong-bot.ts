@@ -3,10 +3,7 @@
 import 'dotenv/config.js'
 import { promises as fs } from 'fs'
 import { Contact, log, Message, Room, Wechaty, WechatyBuilder } from 'wechaty'
-import * as os from 'os'
 
-import path from 'path'
-import { format } from 'date-fns'
 import {
     appendContentToFile,
     appendTimestampToFileName,
@@ -22,6 +19,9 @@ import {
 } from './conf.ts'
 
 import { BotStorage } from './bot_storage.ts'
+import { format } from 'date-fns'
+import os from 'os'
+import path from 'path'
 
 enum RemarkType {
     NORMAL = 1,
@@ -73,6 +73,13 @@ async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
         message = savePath
     } else if (msgType === bot.Message.Type.Emoticon) {
         message = '[表情]'
+    } else if (msgType === bot.Message.Type.Recalled) {
+        const recalledMessage = await msg.toRecalled()
+        if (recalledMessage) {
+            message = recalledMessage.toString()
+        } else {
+            message = '[撤回]'
+        }
     } else {
         return
     }
@@ -218,9 +225,9 @@ async function processNormalRemark (bot: Wechaty, storage: BotStorage, remark: s
 }
 
 async function processMessageQueue (bot: Wechaty, storage: BotStorage) {
-    const remarkList = await storage.getRemarks()
-
     log.info('processMessageQueue', 'Processing message queue...')
+
+    const remarkList = await storage.getRemarks()
     for (const remark of remarkList) {
         let message: string | null = ''
         let contact
