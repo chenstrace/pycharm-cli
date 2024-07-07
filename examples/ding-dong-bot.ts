@@ -249,7 +249,7 @@ async function processMessageQueue (bot: Wechaty, storage: BotStorage) {
 
             if (contact && message) {
                 if (message.startsWith('revoke') || message.startsWith('recall')) {
-                    const sentMsg = storage.getSentMessage(contact.id)
+                    const sentMsg = storage.popMostRecentMessage(contact.id)
                     await sentMsg?.recall()
                     return
                 }
@@ -257,7 +257,6 @@ async function processMessageQueue (bot: Wechaty, storage: BotStorage) {
                 if (!res) {
                     log.error('processMessageQueue', 'sendMessage return empty message')
                 } else {
-                    console.error('return message: ', res)
                     storage.addSentMessage(contact.id, res)
                 }
             } else {

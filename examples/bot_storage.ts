@@ -4,35 +4,40 @@ import { REDIS_KEY_ROOM_LIST, REDIS_KEY_MSG_COUNT, REDIS_KEY_REMARK_LIST, REDIS_
 
 class SentMessage {
 
+    static MAX_SECONDS = 3600
     private sentMessageCache: Map<string, Array<[ Message, Date ]>>
 
     constructor () {
         this.sentMessageCache = new Map<string, Array<[ Message, Date ]>>()
     }
 
+    private removeExpiredMessages (messages: Array<[ Message, Date ]>, now: Date, maxAgeSeconds = SentMessage.MAX_SECONDS) {
+        // @ts-ignore
+        while (messages.length > 0 && (now.getTime() - messages[0][1].getTime() > maxAgeSeconds * 1000)) {
+            messages.shift()
+        }
+    }
+
     addMessage (id: string, message: Message) {
-        const timestamp = new Date()
+        const now = new Date()
         let messages = this.sentMessageCache.get(id)
         if (messages) {
-            messages.push([ message, timestamp ])
+            messages.push([ message, now ])
+            this.removeExpiredMessages(messages, now)
         } else {
-            messages = [ [ message, timestamp ] ]
+            messages = [ [ message, now ] ]
             this.sentMessageCache.set(id, messages)
         }
     }
 
-    getMessage (id: string, maxAgeSeconds: number = 10800): Message | undefined {
+    popMostRecentMessage (id: string, maxAgeSeconds: number = SentMessage.MAX_SECONDS): Message | undefined {
         const messages = this.sentMessageCache.get(id)
         if (!messages || messages.length === 0) {
             return undefined
         }
 
         const recentMessage = messages.pop()
-        const now = new Date()
-        // @ts-ignore
-        while (messages.length > 0 && (now.getTime() - messages[0][1].getTime() > maxAgeSeconds * 1000)) {
-            messages.shift()
-        }
+        this.removeExpiredMessages(messages, new Date(), maxAgeSeconds)
         return recentMessage ? recentMessage[0] : undefined
     }
 
@@ -106,8 +111,8 @@ class BotStorage {
         this.name2ContactCache.set(name, contact)
     }
 
-    public getSentMessage (id: string, maxAgeSeconds: number = 180): Message | undefined {
-        return this.sentMessageCache.getMessage(id, maxAgeSeconds)
+    public popMostRecentMessage (id: string, maxAgeSeconds: number = 180): Message | undefined {
+        return this.sentMessageCache.popMostRecentMessage(id, maxAgeSeconds)
     }
 
     public addSentMessage (id: string, message: Message) {
