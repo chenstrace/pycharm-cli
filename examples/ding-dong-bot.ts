@@ -248,7 +248,18 @@ async function processMessageQueue (bot: Wechaty, storage: BotStorage) {
             }
 
             if (contact && message) {
-                await sendMessage(contact, toText, message, MSG_FILE)
+                if (message.startsWith('revoke') || message.startsWith('recall')) {
+                    const sentMsg = storage.getSentMessage(contact.id)
+                    await sentMsg?.recall()
+                    return
+                }
+                const res = await sendMessage(contact, toText, message, MSG_FILE)
+                if (!res) {
+                    log.error('processMessageQueue', 'sendMessage return empty message')
+                } else {
+                    console.error('return message: ', res)
+                    storage.addSentMessage(contact.id, res)
+                }
             } else {
                 if (!contact) {
                     log.error('processMessageQueue', 'sendMessage FAILED: empty contact,message(%s)', message)

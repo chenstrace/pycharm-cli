@@ -55,34 +55,30 @@ async function sendFileMessage (contact: Contact | Room, filePath: string) {
         const fileStat = await fs.stat(filePath)
         if (fileStat.isFile()) {
             const fileBox = FileBox.fromFile(filePath)
-            await contact.say(fileBox)
+            return await contact.say(fileBox)
         } else {
             log.error('sendFileMessage', 'Not a file:', filePath)
-            return false
         }
     } catch (err) {
         // @ts-ignore
         log.error('sendFileMessage', 'Error sending file(%s): %s', filePath, err.message)
-        return false
     }
-    return true
 }
 
 async function sendMessage (contact: Contact | Room, toText: string, message: string, logFilePath: string) {
+    let res
     try {
         if (message.startsWith('paste ') || message.startsWith('sendfile ')) {
             const command = message.split(' ')[0]
             const filePath = message.replace(`${command} `, '')
-            if (!await sendFileMessage(contact, filePath)) {
-                return false
-            }
+            res = await sendFileMessage(contact, filePath)
         } else {
-            await contact.say(message)
+            res = await contact.say(message)
         }
     } catch (err) {
         // @ts-ignore
         log.error('sendMessage', 'Error sending: %s, %s', message, err.message)
-        return false
+        return
     }
 
     log.info('sendMessage', 'Sent(%s): %s', toText, message)
@@ -98,7 +94,7 @@ async function sendMessage (contact: Contact | Room, toText: string, message: st
         // @ts-ignore
         log.error('sendMessage', 'Error writing outing message to file:%s', err.message)
     }
-    return true
+    return res
 }
 
 export { fileExists, appendContentToFile, appendTimestampToFileName, formatDate, sendMessage }
