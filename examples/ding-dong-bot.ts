@@ -65,7 +65,7 @@ async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
         const fileBox = await msg.toFileBox()
         const fileName = fileBox.name
         let savePath = ATT_SAVE_DIR + fileName
-        // 如何文件存在，则在文件名后面加上当前时间戳
+        // 如果文件存在，则在文件名后面加上当前时间戳
         if (await fileExists(savePath)) {
             savePath = await appendTimestampToFileName(savePath)
         }
