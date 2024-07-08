@@ -2,16 +2,17 @@ import { Contact, log, type Message, Room } from 'wechaty'
 import { createClient, type RedisClientType } from 'redis'
 import { REDIS_KEY_ROOM_LIST, REDIS_KEY_MSG_COUNT, REDIS_KEY_REMARK_LIST, REDIS_URL } from './conf.ts'
 
+const MAX_SECONDS = 300
+
 class SentMessage {
 
-    static MAX_SECONDS = 3600
     private sentMessageCache: Map<string, Array<[ Message, Date ]>>
 
     constructor () {
         this.sentMessageCache = new Map<string, Array<[ Message, Date ]>>()
     }
 
-    private removeExpiredMessages (messages: Array<[ Message, Date ]>, now: Date, maxAgeSeconds = SentMessage.MAX_SECONDS) {
+    private removeExpiredMessages (messages: Array<[ Message, Date ]>, now: Date, maxAgeSeconds = MAX_SECONDS) {
         // @ts-ignore
         while (messages.length > 0 && (now.getTime() - messages[0][1].getTime() > maxAgeSeconds * 1000)) {
             messages.shift()
@@ -24,20 +25,25 @@ class SentMessage {
         if (messages) {
             messages.push([ message, now ])
             this.removeExpiredMessages(messages, now)
+            log.info('addMessage', 'add done, after removing expired messages, to:%s, length:%s', id, messages.length)
         } else {
             messages = [ [ message, now ] ]
             this.sentMessageCache.set(id, messages)
+            log.info('addMessage', 'first time to add, to:%s, length:%s', id, messages.length)
         }
     }
 
-    popMostRecentMessage (id: string, maxAgeSeconds: number = SentMessage.MAX_SECONDS): Message | undefined {
+    popMostRecentMessage (id: string, maxAgeSeconds: number = MAX_SECONDS): Message | undefined {
         const messages = this.sentMessageCache.get(id)
         if (!messages || messages.length === 0) {
             return undefined
         }
-
+        log.info('popMostRecentMessage', 'before removing expired messages, to:%s, length:%s', id, messages.length)
         const recentMessage = messages.pop()
+        log.info('popMostRecentMessage', 'after removing expired messages, to:%s, length:%s', id, messages.length)
         this.removeExpiredMessages(messages, new Date(), maxAgeSeconds)
+        log.info('popMostRecentMessage', 'after removing expired messages, to:%s, length:%s', id, messages.length)
+        log.error('popMostRecentMessage', 'after removing expired messages, to:%s, length:%s', id, messages.length)
         return recentMessage ? recentMessage[0] : undefined
     }
 
@@ -111,7 +117,7 @@ class BotStorage {
         this.name2ContactCache.set(name, contact)
     }
 
-    public popMostRecentMessage (id: string, maxAgeSeconds: number = 180): Message | undefined {
+    public popMostRecentMessage (id: string, maxAgeSeconds: number = MAX_SECONDS): Message | undefined {
         return this.sentMessageCache.popMostRecentMessage(id, maxAgeSeconds)
     }
 

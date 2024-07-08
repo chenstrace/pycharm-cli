@@ -22,7 +22,7 @@ async function ensureDirectoryExists (directoryPath: string): Promise<void> {
     }
 }
 
-async function appendContentToFile (content: string, date: Date): Promise<void> {
+async function appendDateNamedLogFile (content: string, date: Date): Promise<void> {
     try {
         const homeDir = homedir()
         const directoryPath = join(homeDir, 'wechaty_history')
@@ -44,10 +44,6 @@ async function appendTimestampToFileName (filePath: string) {
     const timestamp = Date.now()
     const newFileName = `${parsedPath.name}_${timestamp}${parsedPath.ext}`
     return path.join(parsedPath.dir, newFileName)
-}
-
-function formatDate (date: Date): string {
-    return format(date, 'yyyy-MM-dd HH:mm:ss')
 }
 
 async function sendFileMessage (contact: Contact | Room, filePath: string) {
@@ -83,13 +79,10 @@ async function sendMessage (contact: Contact | Room, toText: string, message: st
 
     log.info('sendMessage', 'Sent(%s): %s', toText, message)
     const fromText = 'me'
-    const date = new Date()
-    const logContent: string = `${formatDate(date)} | f(${fromText}), t(${toText}): ${message}\n`
+    const logContent: string = `from(${fromText}), to(${toText}): ${message}`
 
     try {
-        await fs.appendFile(logFilePath, logContent, { flush: true })
-        await appendContentToFile(logContent, date)
-
+        await appendLogFile(logFilePath, logContent)
     } catch (err) {
         // @ts-ignore
         log.error('sendMessage', 'Error writing outing message to file:%s', err.message)
@@ -97,4 +90,12 @@ async function sendMessage (contact: Contact | Room, toText: string, message: st
     return res
 }
 
-export { fileExists, appendContentToFile, appendTimestampToFileName, formatDate, sendMessage }
+async function appendLogFile (filePath: string, content: string) {
+    const date = new Date()
+    const logContent: string = `${format(date, 'yyyy-MM-dd HH:mm:ss')} | ${content}\n`
+
+    await fs.appendFile(filePath, logContent, { flush: true })
+    await appendDateNamedLogFile(logContent, date)
+}
+
+export { fileExists, appendLogFile, appendTimestampToFileName, sendMessage }

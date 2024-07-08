@@ -5,10 +5,9 @@ import { promises as fs } from 'fs'
 import { Contact, log, Message, Room, Wechaty, WechatyBuilder } from 'wechaty'
 
 import {
-    appendContentToFile,
+    appendLogFile,
     appendTimestampToFileName,
     fileExists,
-    formatDate,
     sendMessage,
 } from './utils.ts'
 import { onScan, onLogin, onLogout } from './events.ts'
@@ -95,12 +94,10 @@ async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
         fromText = storage.getRemarkById(from.id) || from.name() || await from.alias() || ''
         toText = storage.getRemarkById(to.id) || to.name() || await to.alias() || ''
     }
-    const date = new Date()
-    const logContent: string = `${formatDate(date)} | f(${fromText}), t(${toText}): ${message}\n`
+    const logContent: string = `from(${fromText}), to(${toText}): ${message}`
 
     try {
-        await fs.appendFile(MSG_FILE, logContent, { flush: true })
-        await appendContentToFile(logContent, date)
+        await appendLogFile(MSG_FILE, logContent)
     } catch (err) {
         // @ts-ignore
         log.error('onMessage', 'Error writing incoming message to file: %s', err.message)
@@ -334,10 +331,7 @@ async function onReady (bot: Wechaty, storage: BotStorage) {
     log.info('onReady', 'setting up timer')
 
     try {
-        const date = new Date()
-        const content: string = formatDate(date) + ' Program ready\n'
-        await fs.appendFile(MSG_FILE, content, { flush: true })
-        await appendContentToFile(content, date)
+        await appendLogFile(MSG_FILE, 'Program ready')
     } catch (err) {
         // @ts-ignore
         log.error('onReady', 'Error writing ready to file:%s', err.message)
@@ -359,10 +353,7 @@ async function main () {
     }
 
     try {
-        const date = new Date()
-        const content: string = formatDate(date) + ' Program begin\n'
-        await fs.appendFile(MSG_FILE, content, { flush: true })
-        await appendContentToFile(content, date)
+        await appendLogFile(MSG_FILE, 'Program begin')
     } catch (err) {
         // @ts-ignore
         log.error('main', 'Error writing Program begin to file exception:%s', err.message)
