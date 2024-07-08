@@ -2,19 +2,19 @@ import { Contact, log, type Message, Room } from 'wechaty'
 import { createClient, type RedisClientType } from 'redis'
 import { REDIS_KEY_ROOM_LIST, REDIS_KEY_MSG_COUNT, REDIS_KEY_REMARK_LIST, REDIS_URL } from './conf.ts'
 
-const MAX_SECONDS = 300
-
 class SentMessage {
 
     private sentMessageCache: Map<string, Array<[ Message, Date ]>>
+    private readonly maxAgeSeconds
 
-    constructor () {
+    constructor (maxAgeSeconds: number) {
         this.sentMessageCache = new Map<string, Array<[ Message, Date ]>>()
+        this.maxAgeSeconds = maxAgeSeconds
     }
 
-    private removeExpiredMessages (messages: Array<[ Message, Date ]>, now: Date, maxAgeSeconds = MAX_SECONDS) {
+    private removeExpiredMessages (messages: Array<[ Message, Date ]>, now: Date) {
         // @ts-ignore
-        while (messages.length > 0 && (now.getTime() - messages[0][1].getTime() > maxAgeSeconds * 1000)) {
+        while (messages.length > 0 && (now.getTime() - messages[0][1].getTime() > this.maxAgeSeconds * 1000)) {
             messages.shift()
         }
     }
@@ -31,13 +31,13 @@ class SentMessage {
         }
     }
 
-    popMostRecentMessage (id: string, maxAgeSeconds: number = MAX_SECONDS): Message | undefined {
+    popMostRecentMessage (id: string): Message | undefined {
         const messages = this.sentMessageCache.get(id)
         if (!messages || messages.length === 0) {
             return undefined
         }
         const recentMessage = messages.pop()
-        this.removeExpiredMessages(messages, new Date(), maxAgeSeconds)
+        this.removeExpiredMessages(messages, new Date())
         return recentMessage ? recentMessage[0] : undefined
     }
 
@@ -49,7 +49,7 @@ class BotStorage {
     private id2RemarkCache = new Map<string, string>()
     private name2ContactCache = new Map<string, Contact | Room>()
     private redisClient: RedisClientType
-    private sentMessageCache = new SentMessage()
+    private sentMessageCache = new SentMessage(300)
 
     constructor () {
         this.redisClient = createClient({ url: REDIS_URL })
@@ -111,8 +111,8 @@ class BotStorage {
         this.name2ContactCache.set(name, contact)
     }
 
-    public popMostRecentMessage (id: string, maxAgeSeconds: number = MAX_SECONDS): Message | undefined {
-        return this.sentMessageCache.popMostRecentMessage(id, maxAgeSeconds)
+    public popMostRecentMessage (id: string): Message | undefined {
+        return this.sentMessageCache.popMostRecentMessage(id)
     }
 
     public addSentMessage (id: string, message: Message) {
