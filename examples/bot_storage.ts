@@ -25,11 +25,9 @@ class SentMessage {
         if (messages) {
             messages.push([ message, now ])
             this.removeExpiredMessages(messages, now)
-            log.info('addMessage', 'add done, after removing expired messages, to:%s, length:%s', id, messages.length)
         } else {
             messages = [ [ message, now ] ]
             this.sentMessageCache.set(id, messages)
-            log.info('addMessage', 'first time to add, to:%s, length:%s', id, messages.length)
         }
     }
 
@@ -38,12 +36,8 @@ class SentMessage {
         if (!messages || messages.length === 0) {
             return undefined
         }
-        log.info('popMostRecentMessage', 'before removing expired messages, to:%s, length:%s', id, messages.length)
         const recentMessage = messages.pop()
-        log.info('popMostRecentMessage', 'after removing expired messages, to:%s, length:%s', id, messages.length)
         this.removeExpiredMessages(messages, new Date(), maxAgeSeconds)
-        log.info('popMostRecentMessage', 'after removing expired messages, to:%s, length:%s', id, messages.length)
-        log.error('popMostRecentMessage', 'after removing expired messages, to:%s, length:%s', id, messages.length)
         return recentMessage ? recentMessage[0] : undefined
     }
 
