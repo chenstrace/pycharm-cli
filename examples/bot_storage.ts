@@ -13,9 +13,18 @@ class SentMessage {
     }
 
     private removeExpiredMessages (messages: Array<[ Message, Date ]>, now: Date) {
-        // @ts-ignore
-        while (messages.length > 0 && (now.getTime() - messages[0][1].getTime() > this.maxAgeSeconds * 1000)) {
-            messages.shift()
+        const cutoffTime = now.getTime() - this.maxAgeSeconds * 1000
+
+        let removeCount = 0
+        for (let i = 0; i < messages.length; i++) {
+            if ((messages[i] as [ Message, Date ])[1].getTime() > cutoffTime) {
+                break
+            }
+            removeCount++
+        }
+
+        if (removeCount > 0) {
+            messages.splice(0, removeCount)
         }
     }
 
