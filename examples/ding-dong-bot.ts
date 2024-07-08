@@ -8,7 +8,7 @@ import {
     appendLogFile,
     appendTimestampToFileName,
     fileExists,
-    sendMessage,
+    handleMessage,
 } from './utils.ts'
 import { onScan, onLogin, onLogout } from './events.ts'
 import {
@@ -245,17 +245,8 @@ async function processMessageQueue (bot: Wechaty, storage: BotStorage) {
             }
 
             if (contact && message) {
-                if (message.startsWith('revoke') || message.startsWith('recall')) {
-                    const sentMsg = storage.popMostRecentMessage(contact.id)
-                    await sentMsg?.recall()
-                    return
-                }
-                const res = await sendMessage(contact, toText, message, MSG_FILE)
-                if (!res) {
-                    log.error('processMessageQueue', 'sendMessage return empty message')
-                } else {
-                    storage.addSentMessage(contact.id, res)
-                }
+                await handleMessage(storage, contact, toText, message, MSG_FILE)
+
             } else {
                 if (!contact) {
                     log.error('processMessageQueue', 'sendMessage FAILED: empty contact,message(%s)', message)

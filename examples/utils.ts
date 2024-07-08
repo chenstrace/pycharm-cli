@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import { homedir } from 'os'
 import { Contact, log, Room } from 'wechaty'
 import { FileBox } from 'file-box'
+import type { BotStorage } from './bot_storage.ts'
 
 async function fileExists (filePath: string) {
     try {
@@ -61,23 +62,32 @@ async function sendFileMessage (contact: Contact | Room, filePath: string) {
     }
 }
 
-async function sendMessage (contact: Contact | Room, toText: string, message: string, logFilePath: string) {
+async function handleMessage (storage: BotStorage, contact: Contact | Room, toText: string, message: string, logFilePath: string) {
     let res
     try {
-        if (message.startsWith('paste ') || message.startsWith('sendfile ')) {
+        if (message.startsWith('revoke') || message.startsWith('recall')) {
+            const sentMsg = storage.popMostRecentMessage(contact.id)
+            await sentMsg?.recall()
+            return
+        } else if (message.startsWith('paste ') || message.startsWith('sendfile ')) {
             const command = message.split(' ')[0]
             const filePath = message.replace(`${command} `, '')
             res = await sendFileMessage(contact, filePath)
         } else {
             res = await contact.say(message)
         }
+        if (!res) {
+            log.error('handleMessage', 'contact.say return empty message')
+        } else {
+            storage.addSentMessage(contact.id, res)
+        }
     } catch (err) {
         // @ts-ignore
-        log.error('sendMessage', 'Error sending: %s, %s', message, err.message)
+        log.error('handleMessage', 'Error sending: %s, %s', message, err.message)
         return
     }
 
-    log.info('sendMessage', 'Sent(%s): %s', toText, message)
+    log.info('handleMessage', 'Sent(%s): %s', toText, message)
     const fromText = 'me'
     const logContent: string = `from(${fromText}), to(${toText}): ${message}`
 
@@ -85,7 +95,7 @@ async function sendMessage (contact: Contact | Room, toText: string, message: st
         await appendLogFile(logFilePath, logContent)
     } catch (err) {
         // @ts-ignore
-        log.error('sendMessage', 'Error writing outing message to file:%s', err.message)
+        log.error('handleMessage', 'Error writing outing message to file:%s', err.message)
     }
     return res
 }
@@ -98,4 +108,4 @@ async function appendLogFile (filePath: string, content: string) {
     await appendDateNamedLogFile(logContent, date)
 }
 
-export { fileExists, appendLogFile, appendTimestampToFileName, sendMessage }
+export { fileExists, appendLogFile, appendTimestampToFileName, handleMessage }
