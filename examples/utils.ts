@@ -62,7 +62,7 @@ async function sendFileMessage (contact: Contact | Room, filePath: string) {
     }
 }
 
-async function handleMessage (storage: BotStorage, contact: Contact | Room, toText: string, message: string, logFilePath: string) {
+async function handleOutGoingMessage (storage: BotStorage, contact: Contact | Room, toText: string, message: string, logFilePath: string) {
     let res
     try {
         if (message.startsWith('revoke') || message.startsWith('recall')) {
@@ -77,17 +77,17 @@ async function handleMessage (storage: BotStorage, contact: Contact | Room, toTe
             res = await contact.say(message)
         }
         if (!res) {
-            log.error('handleMessage', 'contact.say return empty message')
+            log.error('handleOutGoingMessage', 'contact.say return empty message')
         } else {
             storage.addSentMessage(contact.id, res)
         }
     } catch (err) {
         // @ts-ignore
-        log.error('handleMessage', 'Error sending: %s, %s', message, err.message)
+        log.error('handleOutGoingMessage', 'Error sending: %s, %s', message, err.message)
         return
     }
 
-    log.info('handleMessage', 'Sent(%s): %s', toText, message)
+    log.info('handleOutGoingMessage', 'Sent(%s): %s', toText, message)
     const fromText = 'me'
     const logContent: string = `from(${fromText}), to(${toText}): ${message}`
 
@@ -95,17 +95,19 @@ async function handleMessage (storage: BotStorage, contact: Contact | Room, toTe
         await appendLogFile(logFilePath, logContent)
     } catch (err) {
         // @ts-ignore
-        log.error('handleMessage', 'Error writing outing message to file:%s', err.message)
+        log.error('handleOutGoingMessage', 'Error writing outing message to file:%s', err.message)
     }
     return res
 }
 
-async function appendLogFile (filePath: string, content: string) {
+async function appendLogFile (filePath: string, content: string, isOnlyLogNamedFile = false) {
     const date = new Date()
     const logContent: string = `${format(date, 'yyyy-MM-dd HH:mm:ss')} | ${content}\n`
-
-    await fs.appendFile(filePath, logContent, { flush: true })
     await appendDateNamedLogFile(logContent, date)
+
+    if (!isOnlyLogNamedFile) {
+        await fs.appendFile(filePath, logContent, { flush: true })
+    }
 }
 
-export { fileExists, appendLogFile, appendTimestampToFileName, handleMessage }
+export { fileExists, appendLogFile, appendTimestampToFileName, handleOutGoingMessage }

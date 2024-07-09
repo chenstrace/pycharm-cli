@@ -8,7 +8,7 @@ import {
     appendLogFile,
     appendTimestampToFileName,
     fileExists,
-    handleMessage,
+    handleOutGoingMessage,
 } from './utils.ts'
 import { onScan, onLogin, onLogout } from './events.ts'
 import {
@@ -28,22 +28,21 @@ enum RemarkType {
     GROUP = 3
 }
 
-async function isMessageShouldBeHandled (msg: Message, storage: BotStorage): Promise<[ boolean, boolean ]> {
+async function getRoomInfoByMessage (msg: Message, storage: BotStorage): Promise<[ boolean, boolean ]> {
     const room = msg.room()
+    let isRoomMsg = false
+    let isAllowedRoomTopic = false
     if (room) {
+        isRoomMsg = true
         const roomTopic: string = await room.topic()
         const allowedRoomTopics = await storage.getAllowedRoomTopics()
-        return [ allowedRoomTopics.includes(roomTopic), true ]
+        isAllowedRoomTopic = allowedRoomTopics.includes(roomTopic)
     }
 
-    return [ true, false ]
+    return [ isRoomMsg, isAllowedRoomTopic ]
 }
 
 async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
-    const [ shouldBeHandled, isRoomMsg ] = await isMessageShouldBeHandled(msg, storage)
-    if (!shouldBeHandled) {
-        return
-    }
     const from = msg.talker()
     const to = msg.listener() as Contact
 
@@ -85,6 +84,7 @@ async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
 
     let fromText: string
     let toText: string
+    const [ isRoomMsg, isAllowedRoomTopic ] = await getRoomInfoByMessage(msg, storage)
 
     if (isRoomMsg) {
         fromText = from.name()
@@ -95,16 +95,19 @@ async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
         toText = storage.getRemarkById(to.id) || to.name() || await to.alias() || ''
     }
     const logContent: string = `from(${fromText}), to(${toText}): ${message}`
+    const isOnlyLogNamedFile = isRoomMsg && !isAllowedRoomTopic
 
     try {
-        await appendLogFile(MSG_FILE, logContent)
+        await appendLogFile(MSG_FILE, logContent, isOnlyLogNamedFile)
     } catch (err) {
         // @ts-ignore
         log.error('onMessage', 'Error writing incoming message to file: %s', err.message)
     }
 
     try {
-        await storage.incrMsgCount()
+        if (!isOnlyLogNamedFile) {
+            await storage.incrMsgCount()
+        }
     } catch (err) {
         // @ts-ignore
         log.error('onMessage', 'Error incr msg count:%s', err.message)
@@ -245,7 +248,7 @@ async function processMessageQueue (bot: Wechaty, storage: BotStorage) {
             }
 
             if (contact && message) {
-                await handleMessage(storage, contact, toText, message, MSG_FILE)
+                await handleOutGoingMessage(storage, contact, toText, message, MSG_FILE)
 
             } else {
                 if (!contact) {
