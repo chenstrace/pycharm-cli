@@ -45,13 +45,15 @@ async function getRoomInfoByMessage (msg: Message, storage: BotStorage): Promise
 async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
     const from = msg.talker()
     const to = msg.listener() as Contact
-
     if (from.type() !== bot.Contact.Type.Individual) {
+        return
+    }
+    const msgType = msg.type()
+    if (msgType === bot.Message.Type.Unknown) {
         return
     }
     log.info('onMessage', 'from:%s', JSON.stringify(from))
     log.info('onMessage', 'to:%s', JSON.stringify(to))
-    const msgType = msg.type()
     let message: string = ''
     if (msgType === bot.Message.Type.Text) {
         message = msg.text()
