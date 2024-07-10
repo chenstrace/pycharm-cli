@@ -7,6 +7,10 @@
   - Use a shortcut key or mouse click to pop up unread messages
 
 
+- Anti-recall with details
+  - Displays who recalled a message, when it was recalled, and the recalled message content.
+
+
 - Messages
   - Send messages
   - Receive messages
@@ -18,9 +22,6 @@
     - All messages will be automatically saved, including text, images, videos, documents, etc.
     - Efficiently view, search, and edit chat history.
 
-
-- Anti-recall with details
-  - Displays who recalled a message, when it was recalled, and the recalled message content.
 
 
 - Group joining and leaving
