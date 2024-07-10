@@ -121,9 +121,7 @@ async function parseMsgIdFromRevokedMsgText (text: string) {
     try {
         const result = await parseXml(text)
         if (result) {
-            const msgId = result.sysmsg.revokemsg[0].msgid[0]
-            // console.error(`Message ID: ${msgId}`)
-            return msgId
+            return result.sysmsg.revokemsg[0].msgid[0]
         }
     } catch (err) {
         console.error(`Error parsing msg id failed: ${err}`)
