@@ -1,18 +1,48 @@
 import { Contact, log, type Message, Room } from 'wechaty'
 import { createClient, type RedisClientType } from 'redis'
 import { REDIS_KEY_ROOM_LIST, REDIS_KEY_MSG_COUNT, REDIS_KEY_REMARK_LIST, REDIS_URL } from './conf.ts'
+import { LRUCache } from 'lru-cache'
+
+interface SimpleMsg {
+    fromName: string;
+    toName: string
+    msg: string;
+}
+
+class SimpleMessageCache {
+
+    // key is msgId
+    private cache: LRUCache<string, SimpleMsg>
+
+    constructor (maxAgeSeconds: number) {
+        const cacheOptions = {
+            ttl: 1000 * maxAgeSeconds,
+            ttlAutopurge: true,
+        }
+        this.cache = new LRUCache<string, SimpleMsg>(cacheOptions)
+    }
+
+    set (msgId: string, simpleMsg: SimpleMsg) {
+        this.cache.set(msgId, simpleMsg)
+    }
+
+    get (msgId: string): SimpleMsg | undefined {
+        return this.cache.get(msgId)
+    }
+
+}
 
 class SentMessage {
 
-    private sentMessageCache: Map<string, Array<[ Message, Date ]>>
+    private cache: Map<string, Array<[ Message, Date ]>>
     private readonly maxAgeSeconds
 
     constructor (maxAgeSeconds: number) {
-        this.sentMessageCache = new Map<string, Array<[ Message, Date ]>>()
+        this.cache = new Map<string, Array<[ Message, Date ]>>()
         this.maxAgeSeconds = maxAgeSeconds
     }
 
-    private removeExpiredMessages (messages: Array<[ Message, Date ]>, now: Date) {
+    private removeExpired (messages: Array<[ Message, Date ]>, now: Date) {
         const cutoffTime = now.getTime() - this.maxAgeSeconds * 1000
 
         let removeCount = 0
@@ -28,25 +58,25 @@ class SentMessage {
         }
     }
 
-    addMessage (id: string, message: Message) {
+    add (id: string, message: Message) {
         const now = new Date()
-        let messages = this.sentMessageCache.get(id)
+        let messages = this.cache.get(id)
         if (messages) {
             messages.push([ message, now ])
-            this.removeExpiredMessages(messages, now)
+            this.removeExpired(messages, now)
         } else {
             messages = [ [ message, now ] ]
-            this.sentMessageCache.set(id, messages)
+            this.cache.set(id, messages)
         }
     }
 
-    popMostRecentMessage (id: string): Message | undefined {
-        const messages = this.sentMessageCache.get(id)
+    popMostRecent (id: string): Message | undefined {
+        const messages = this.cache.get(id)
         if (!messages || messages.length === 0) {
             return undefined
         }
         const recentMessage = messages.pop()
-        this.removeExpiredMessages(messages, new Date())
+        this.removeExpired(messages, new Date())
         return recentMessage ? recentMessage[0] : undefined
     }
 
@@ -58,7 +88,8 @@ class BotStorage {
     private id2RemarkCache = new Map<string, string>()
     private name2ContactCache = new Map<string, Contact | Room>()
     private redisClient: RedisClientType
-    private sentMessageCache = new SentMessage(300)
+    private sentMessage = new SentMessage(300)
+    private messageCache = new SimpleMessageCache(300)
 
     constructor () {
         this.redisClient = createClient({ url: REDIS_URL })
@@ -120,12 +151,20 @@ class BotStorage {
         this.name2ContactCache.set(name, contact)
     }
 
-    public popMostRecentMessage (id: string): Message | undefined {
-        return this.sentMessageCache.popMostRecentMessage(id)
+    public popMostRecentMessage (fromId: string): Message | undefined {
+        return this.sentMessage.popMostRecent(fromId)
     }
 
-    public addSentMessage (id: string, message: Message) {
-        this.sentMessageCache.addMessage(id, message)
+    public addSentMessage (fromId: string, message: Message) {
+        this.sentMessage.add(fromId, message)
+    }
+
+    public setMessageToCache (msgId: string, simpleMsg: SimpleMsg) {
+        this.messageCache.set(msgId, simpleMsg)
+    }
+
+    public getMessageFromCache (msgId: string): SimpleMsg | undefined {
+        return this.messageCache.get(msgId)
     }
 
 }

@@ -8,7 +8,7 @@ import {
     appendLogFile,
     appendTimestampToFileName,
     fileExists,
-    handleOutGoingMessage,
+    handleOutGoingMessage, parseMsgIdFromRevokedMsgText,
 } from './utils.ts'
 import { onScan, onLogin, onLogout } from './events.ts'
 import {
@@ -72,11 +72,15 @@ async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
     } else if (msgType === bot.Message.Type.Emoticon) {
         message = '[表情]'
     } else if (msgType === bot.Message.Type.Recalled) {
+        message = '[撤回]'
+
         const recalledMessage = await msg.toRecalled()
         if (recalledMessage) {
-            message = recalledMessage.toString()
-        } else {
-            message = '[撤回]'
+            const orgMessageId = await parseMsgIdFromRevokedMsgText(recalledMessage.text())
+            const orgMessage = storage.getMessageFromCache(orgMessageId)
+            if (orgMessage) {
+                message = `[撤回] ${orgMessage.fromName} -> ${orgMessage.toName}: ${orgMessage.msg}`
+            }
         }
     } else {
         return
@@ -94,7 +98,18 @@ async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
         fromText = storage.getRemarkById(from.id) || from.name() || await from.alias() || ''
         toText = storage.getRemarkById(to.id) || to.name() || await to.alias() || ''
     }
-    const logContent: string = `from(${fromText}), to(${toText}): ${message}`
+    let logContent
+    if (msgType !== bot.Message.Type.Recalled) {
+        storage.setMessageToCache(msg.id, {
+            fromName: fromText,
+            msg: message,
+            toName: toText,
+        })
+        logContent = `from(${fromText}), to(${toText}): ${message}`
+    } else {
+        logContent = message
+    }
+
     const isOnlyLogNamedFile = isRoomMsg && !isAllowedRoomTopic
 
     try {
@@ -252,10 +267,10 @@ async function processMessageQueue (bot: Wechaty, storage: BotStorage) {
 
             } else {
                 if (!contact) {
-                    log.error('processMessageQueue', 'sendMessage FAILED: empty contact,message(%s)', message)
+                    log.error('processMessageQueue', 'sendRequest FAILED: empty contact,message(%s)', message)
                 }
                 if (!message) {
-                    log.error('processMessageQueue', 'sendMessage FAILED: empty message,contact(%s)', JSON.stringify(contact))
+                    log.error('processMessageQueue', 'sendRequest FAILED: empty message,contact(%s)', JSON.stringify(contact))
                 }
             }
         }

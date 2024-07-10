@@ -5,6 +5,7 @@ import { homedir } from 'os'
 import { Contact, log, Room } from 'wechaty'
 import { FileBox } from 'file-box'
 import type { BotStorage } from './bot_storage.ts'
+import { parseStringPromise } from 'xml2js'
 
 async function fileExists (filePath: string) {
     try {
@@ -80,6 +81,12 @@ async function handleOutGoingMessage (storage: BotStorage, contact: Contact | Ro
             log.error('handleOutGoingMessage', 'contact.say return empty message')
         } else {
             storage.addSentMessage(contact.id, res)
+            storage.setMessageToCache(res.id, {
+                fromName: 'me',
+                msg: message,
+                toName: toText,
+            })
+            // console.error('handleOutGoingMessage', 'contact.say return message', res)
         }
     } catch (err) {
         // @ts-ignore
@@ -110,4 +117,27 @@ async function appendLogFile (filePath: string, content: string, isOnlyLogNamedF
     }
 }
 
-export { fileExists, appendLogFile, appendTimestampToFileName, handleOutGoingMessage }
+async function parseMsgIdFromRevokedMsgText (text: string) {
+    try {
+        const result = await parseXml(text)
+        if (result) {
+            const msgId = result.sysmsg.revokemsg[0].msgid[0]
+            // console.error(`Message ID: ${msgId}`)
+            return msgId
+        }
+    } catch (err) {
+        console.error(`Error parsing msg id failed: ${err}`)
+    }
+    return ''
+}
+
+async function parseXml (xml: string) {
+    try {
+        return await parseStringPromise(xml)
+
+    } catch (err) {
+        console.error(`Error parsing XML: ${err}`)
+    }
+}
+
+export { fileExists, appendLogFile, appendTimestampToFileName, handleOutGoingMessage, parseMsgIdFromRevokedMsgText }
