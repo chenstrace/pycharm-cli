@@ -1,6 +1,6 @@
 ## Feature
 
-- Worker-Friendly
+- Employee-friendly
   - Send and receive messages in your familiar editor or IDE, such as Sublime, Visual Studio Code, PyCharm, etc., just like you do while working.
   - Efficiently use WeChat without needing to install the WeChat client.
   - Avoid challenges from your boss about spending too much work time chatting on WeChat.
