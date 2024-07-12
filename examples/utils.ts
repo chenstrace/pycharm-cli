@@ -70,7 +70,7 @@ async function handleOutGoingMessage (storage: BotStorage, contact: Contact | Ro
             const sentMsg = storage.popMostRecentMessage(contact.id)
             await sentMsg?.recall()
             return
-        } else if (message.startsWith('paste ') || message.startsWith('sendfile ')) {
+        } else if (message.startsWith('paste ') || message.startsWith('sendfile ') || message.startsWith('sz ')) {
             const command = message.split(' ')[0]
             const filePath = message.replace(`${command} `, '')
             res = await sendFileMessage(contact, filePath)

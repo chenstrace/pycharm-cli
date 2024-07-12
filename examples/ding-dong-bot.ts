@@ -43,6 +43,7 @@ async function getRoomInfoByMessage (msg: Message, storage: BotStorage): Promise
 }
 
 async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
+    console.error(msg)
     const from = msg.talker()
     const to = msg.listener() as Contact
     if (from.type() !== bot.Contact.Type.Individual) {
@@ -52,8 +53,8 @@ async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
     if (msgType === bot.Message.Type.Unknown) {
         return
     }
-    log.info('onMessage', 'from:%s', JSON.stringify(from))
-    log.info('onMessage', 'to:%s', JSON.stringify(to))
+    // log.info('onMessage', 'from:%s', JSON.stringify(from))
+    // log.info('onMessage', 'to:%s', JSON.stringify(to))
     let message: string = ''
     if (msgType === bot.Message.Type.Text) {
         message = msg.text()
@@ -62,15 +63,19 @@ async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
       || msgType === bot.Message.Type.Audio
       || msgType === bot.Message.Type.Attachment
     ) {
-        const fileBox = await msg.toFileBox()
-        const fileName = fileBox.name
-        let savePath = ATT_SAVE_DIR + fileName
-        // 如果文件存在，则在文件名后面加上当前时间戳
-        if (await fileExists(savePath)) {
-            savePath = await appendTimestampToFileName(savePath)
+        if (msgType === bot.Message.Type.Attachment && msg.text() === '该类型暂不支持，请在手机上查看') {
+            message = '该类型暂不支持，请在手机上查看'
+        } else {
+            const fileBox = await msg.toFileBox()
+            const fileName = fileBox.name
+            let savePath = ATT_SAVE_DIR + fileName
+            // 如果文件存在，则在文件名后面加上当前时间戳
+            if (await fileExists(savePath)) {
+                savePath = await appendTimestampToFileName(savePath)
+            }
+            await fileBox.toFile(savePath)
+            message = savePath
         }
-        await fileBox.toFile(savePath)
-        message = savePath
     } else if (msgType === bot.Message.Type.Emoticon) {
         message = '[表情]'
     } else if (msgType === bot.Message.Type.Recalled) {
@@ -343,6 +348,19 @@ async function onReady (bot: Wechaty, storage: BotStorage) {
 
     try {
         await appendLogFile(MSG_FILE, 'Program ready')
+        // const room = await bot.Room.find({ topic: '小号' })
+        //
+        // if (room) {
+        //     console.error(room)
+        //     room.on('leave', (leaverList, kick) => {
+        //         const nameList = leaverList.map(c => c.name()).join(',')
+        //         console.error(`Room lost member ${nameList}`)
+        //         console.error(kick)
+        //     })
+        // } else {
+        //     console.error('Room not found')
+        // }
+
     } catch (err) {
         // @ts-ignore
         log.error('onReady', 'Error writing ready to file:%s', err.message)
@@ -376,6 +394,10 @@ async function main () {
     bot.on('error', console.error)
     bot.on('message', msg => onMessage(msg, bot, storage))
     bot.on('ready', () => onReady(bot, storage))
+    // bot.on('room-leave', async (room, leaverList, remover) => {
+    //     const nameList = leaverList.map(c => c.name()).join(',')
+    //     console.error(`Room ${await room.topic()} lost member ${nameList}, the remover is: ${remover}`)
+    // })
     try {
         await bot.start()
         log.info('main', 'Started.')
