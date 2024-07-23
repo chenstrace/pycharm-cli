@@ -8,7 +8,7 @@ import {
     appendLogFile,
     appendTimestampToFileName,
     fileExists,
-    handleOutGoingMessage, parseMsgIdFromRevokedMsgText,
+    handleOutGoingMessage, parseContactFromNameCardMsg, parseMsgIdFromRevokedMsgText,
 } from './utils.ts'
 import { onScan, onLogin, onLogout } from './events.ts'
 import {
@@ -64,7 +64,7 @@ async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
       || msgType === bot.Message.Type.Attachment
     ) {
         if (msgType === bot.Message.Type.Attachment && msg.text() === '该类型暂不支持，请在手机上查看') {
-            message = '该类型暂不支持，请在手机上查看'
+            message = '[聊天记录] 该类型暂不支持，请在手机上查看'
         } else {
             const fileBox = await msg.toFileBox()
             const fileName = fileBox.name
@@ -89,6 +89,12 @@ async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
                 message = `[撤回] ${orgMessage.fromName} -> ${orgMessage.toName}: ${orgMessage.msg}`
             }
         }
+    } else if (msgType === bot.Message.Type.MiniProgram) {
+        const miniProgram = await msg.toMiniProgram()
+        message = `[小程序] ${miniProgram.description()} ${miniProgram.title()}`
+    } else if (msgType === bot.Message.Type.Contact) {
+        const [ nickname, username ] = await parseContactFromNameCardMsg(msg.text())
+        message = `[联系人] ${nickname} ${username}`
     } else {
         return
     }

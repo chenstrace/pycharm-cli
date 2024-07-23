@@ -129,6 +129,20 @@ async function parseMsgIdFromRevokedMsgText (text: string) {
     return ''
 }
 
+async function parseContactFromNameCardMsg (text: string) {
+    try {
+        const result = await parseXml(text)
+        if (result && result.msg) {
+            const nickname = result.msg.$.nickname || ''
+            const username = result.msg.$.username || ''
+            return [ nickname, username ]
+        }
+    } catch (err) {
+        console.error(`Error parsing msg id failed: ${err}`)
+    }
+    return [ '', '' ]
+}
+
 async function parseXml (xml: string) {
     try {
         return await parseStringPromise(xml)
@@ -138,4 +152,11 @@ async function parseXml (xml: string) {
     }
 }
 
-export { fileExists, appendLogFile, appendTimestampToFileName, handleOutGoingMessage, parseMsgIdFromRevokedMsgText }
+export {
+    fileExists,
+    appendLogFile,
+    appendTimestampToFileName,
+    handleOutGoingMessage,
+    parseMsgIdFromRevokedMsgText,
+    parseContactFromNameCardMsg,
+}
