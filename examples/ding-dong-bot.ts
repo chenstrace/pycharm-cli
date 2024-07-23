@@ -323,7 +323,7 @@ async function processContact (bot: Wechaty) {
     const fileName = `${formattedTime}.json`
 
     const homeDir = os.homedir()
-    const dirPath = path.join(homeDir, 'wechaty_contacts')
+    const dirPath = path.join(homeDir, 'wechaty', 'contact')
 
     try {
         await fs.mkdir(dirPath, { recursive: true })

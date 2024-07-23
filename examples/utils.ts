@@ -27,7 +27,7 @@ async function ensureDirectoryExists (directoryPath: string): Promise<void> {
 async function appendDateNamedLogFile (content: string, date: Date): Promise<void> {
     try {
         const homeDir = homedir()
-        const directoryPath = join(homeDir, 'wechaty_history')
+        const directoryPath = join(homeDir, 'wechaty', 'history')
 
         await ensureDirectoryExists(directoryPath)
 
