@@ -24,11 +24,6 @@
     - Efficiently view, search, and edit chat history.
 
 
-
-- Group joining and leaving
-  - Automatically log group member join and leave events.
-
-
 - Group Whitelist
     - Configurable group whitelist.
     - Do Not Disturb: only show messages from groups in the whitelist.
