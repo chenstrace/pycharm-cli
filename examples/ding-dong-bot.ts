@@ -253,8 +253,7 @@ async function processNormalRemark (bot: Wechaty, storage: BotStorage, remark: s
 }
 
 async function processMessageQueue (bot: Wechaty, storage: BotStorage) {
-    log.info('processMessageQueue', 'Processing message queue...')
-
+    log.info('processMessageQueue', `Processing message queue... Bot status: ${bot.isLoggedIn ? 'Running' : 'Not Running'}`)
     const remarkList = await storage.getRemarks()
     for (const remark of remarkList) {
         let message: string | null = ''
@@ -349,6 +348,22 @@ function dumpContact (bot: Wechaty) {
     }, 1)
 }
 
+function setupPeriodicLoginStateSyncing (bot: Wechaty, storage: BotStorage) {
+    setInterval(() => {
+        synchronizeLoginState(bot, storage).catch(error => {
+            console.error('Error in setupPeriodicLoginStateSyncing:', error)
+        })
+    }, 1000)
+}
+
+async function synchronizeLoginState (bot: Wechaty, storage: BotStorage) {
+    const isLogin = bot.isLoggedIn
+    if (isLogin) {
+        const lastOnlineTime = Math.floor(Date.now() / 1000)
+        await storage.setLastOnlineTime(lastOnlineTime)
+    }
+}
+
 async function onReady (bot: Wechaty, storage: BotStorage) {
     log.info('onReady', 'setting up timer')
 
@@ -374,6 +389,7 @@ async function onReady (bot: Wechaty, storage: BotStorage) {
 
     storage.setId2Remark(bot.currentUser.id, 'me')
     setupPeriodicMessageSending(bot, storage)
+    setupPeriodicLoginStateSyncing(bot, storage)
     dumpContact(bot)
 }
 

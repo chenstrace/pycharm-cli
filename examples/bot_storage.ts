@@ -167,6 +167,10 @@ class BotStorage {
         return this.messageCache.get(msgId)
     }
 
+    public async setLastOnlineTime (lastOnlineTime: number) {
+        await this.redisClient.set('last_online_time', lastOnlineTime)
+    }
+
 }
 
 export { BotStorage }
