@@ -82,6 +82,34 @@ class SentMessage {
 
 }
 
+class ContactList {
+
+    private contacts: { name: string, alias: string }[] = []
+
+    /**
+     * 添加联系人到联系人列表
+     * @param name 联系人姓名
+     * @param alias 联系人别名
+     */
+    public add (name: string, alias: string): void {
+        this.contacts.push({
+            alias,
+            name,
+        })
+    }
+
+    /**
+     * 搜索联系人列表，根据key匹配name或alias的子串
+     * @param key 搜索关键字
+     * @returns 匹配到的联系人列表
+     */
+    public search (key: string): { name: string, alias: string }[] {
+        return this.contacts.filter(contact => contact.name.includes(key) || contact.alias.includes(key),
+        )
+    }
+
+}
+
 class BotStorage {
 
     private remark2ContactCache = new Map<string, Contact>()
@@ -90,6 +118,7 @@ class BotStorage {
     private redisClient: RedisClientType
     private sentMessage = new SentMessage(300)
     private messageCache = new SimpleMessageCache(300)
+    private contactList = new ContactList()
 
     constructor () {
         this.redisClient = createClient({ url: REDIS_URL })
@@ -169,6 +198,14 @@ class BotStorage {
 
     public async setLastOnlineTime (lastOnlineTime: number) {
         await this.redisClient.set('last_online_time', lastOnlineTime)
+    }
+
+    public addContact (name: string, alias: string) {
+        this.contactList.add(name, alias)
+    }
+
+    public searchContact (key: string) {
+        return this.contactList.search(key)
     }
 
 }

@@ -65,20 +65,32 @@ async function sendFileMessage (contact: Contact | Room, filePath: string) {
 
 async function handleOutGoingMessage (storage: BotStorage, contact: Contact | Room, toText: string, message: string, logFilePath: string) {
     let res
+    let searchContact = false
     try {
         if (message.startsWith('revoke') || message.startsWith('recall')) {
             const sentMsg = storage.popMostRecentMessage(contact.id)
             await sentMsg?.recall()
             return
-        } else if (message.startsWith('paste ') || message.startsWith('sendfile ') || message.startsWith('sz ')) {
+        } else if (message.startsWith('paste ') || message.startsWith('sendfile ') || message.startsWith('sz ') || message.startsWith('contact ')) {
             const command = message.split(' ')[0]
-            const filePath = message.replace(`${command} `, '')
-            res = await sendFileMessage(contact, filePath)
+            const arg = message.replace(`${command} `, '')
+
+            if (message.startsWith('contact ')) {
+                searchContact = true
+                const searchResults = storage.searchContact(arg)
+                message = JSON.stringify(searchResults, null, 2)
+                toText = 'me'
+            } else {
+                res = await sendFileMessage(contact, arg)
+            }
+
         } else {
             res = await contact.say(message)
         }
         if (!res) {
-            log.error('handleOutGoingMessage', 'contact.say return empty message')
+            if (!searchContact) {
+                log.error('handleOutGoingMessage', 'contact.say return empty message')
+            }
         } else {
             storage.addSentMessage(contact.id, res)
             storage.setMessageToCache(res.id, {
@@ -86,7 +98,6 @@ async function handleOutGoingMessage (storage: BotStorage, contact: Contact | Ro
                 msg: message,
                 toName: toText,
             })
-            // console.error('handleOutGoingMessage', 'contact.say return message', res)
         }
     } catch (err) {
         // @ts-ignore
@@ -100,6 +111,9 @@ async function handleOutGoingMessage (storage: BotStorage, contact: Contact | Ro
 
     try {
         await appendLogFile(logFilePath, logContent)
+        if (searchContact) {
+            await storage.incrMsgCount()
+        }
     } catch (err) {
         // @ts-ignore
         log.error('handleOutGoingMessage', 'Error writing outing message to file:%s', err.message)

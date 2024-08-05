@@ -297,7 +297,7 @@ function setupPeriodicMessageSending (bot: Wechaty, storage: BotStorage) {
     }, 3000)
 }
 
-async function processContact (bot: Wechaty) {
+async function processContact (bot: Wechaty, storage: BotStorage) {
     const contactList = await bot.Contact.findAll()
 
     interface ContactEntry {
@@ -317,6 +317,7 @@ async function processContact (bot: Wechaty) {
                 name,
             }
             contactEntries.push(entry)
+            storage.addContact(name, alias)
         }
     }
     const sortedEntries = contactEntries.sort((a, b) => {
@@ -340,9 +341,9 @@ async function processContact (bot: Wechaty) {
     }
 }
 
-function dumpContact (bot: Wechaty) {
+function dumpContact (bot: Wechaty, storage: BotStorage) {
     setTimeout(() => {
-        processContact(bot).catch(error => {
+        processContact(bot, storage).catch(error => {
             console.error('Error in processContact:', error)
         })
     }, 1)
@@ -390,7 +391,7 @@ async function onReady (bot: Wechaty, storage: BotStorage) {
     storage.setId2Remark(bot.currentUser.id, 'me')
     setupPeriodicMessageSending(bot, storage)
     setupPeriodicLoginStateSyncing(bot, storage)
-    dumpContact(bot)
+    dumpContact(bot, storage)
 }
 
 async function main () {
