@@ -56,7 +56,7 @@ async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
     // log.info('onMessage', 'from:%s', JSON.stringify(from))
     // log.info('onMessage', 'to:%s', JSON.stringify(to))
     let message: string = ''
-    if (msgType === bot.Message.Type.Text) {
+    if (msgType === bot.Message.Type.Text || msgType === bot.Message.Type.Url) {
         message = msg.text()
     } else if (msgType === bot.Message.Type.Image
       || msgType === bot.Message.Type.Video
@@ -108,8 +108,8 @@ async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
         const room = msg.room()
         toText = room ? await room.topic() : '!members!'
     } else {
-        fromText = storage.getRemarkById(from.id) || from.name() || await from.alias() || ''
-        toText = storage.getRemarkById(to.id) || to.name() || await to.alias() || ''
+        fromText = storage.getRemarkById(from.id) || await from.alias() || from.name() || ''
+        toText = storage.getRemarkById(to.id) || await to.alias() || to.name() || ''
     }
     let logContent
     if (msgType !== bot.Message.Type.Recalled) {
