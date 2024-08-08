@@ -1,4 +1,4 @@
-import { Contact, log, type Message, Room } from 'wechaty'
+import { Contact, log, type Message, Room, type Wechaty } from 'wechaty'
 import { createClient, type RedisClientType } from 'redis'
 import { REDIS_KEY_ROOM_LIST, REDIS_KEY_MSG_COUNT, REDIS_KEY_REMARK_LIST, REDIS_URL } from './conf.ts'
 import { LRUCache } from 'lru-cache'
@@ -7,6 +7,11 @@ interface SimpleMsg {
     fromName: string;
     toName: string
     msg: string;
+}
+
+enum ContactType {
+    Group = 'GROUP',
+    Individual = 'INDIVIDUAL',
 }
 
 class SimpleMessageCache {
@@ -119,9 +124,11 @@ class BotStorage {
     private sentMessage = new SentMessage(300)
     private messageCache = new SimpleMessageCache(300)
     private contactList = new ContactList()
+    private bot: Wechaty
 
-    constructor () {
+    constructor (bot: Wechaty) {
         this.redisClient = createClient({ url: REDIS_URL })
+        this.bot = bot
     }
 
     public async init () {
@@ -172,12 +179,21 @@ class BotStorage {
         this.id2RemarkCache.set(id, remark)
     }
 
-    public getContactByName (name: string): Contact | Room | undefined {
-        return this.name2ContactCache.get(name)
+    private createKey (type: ContactType, key: string): string {
+        return `${type}-${key}`
+    }
+
+    public getContactByNameAndType (name: string, type: ContactType): Contact | Room | undefined {
+        const key = this.createKey(type, name)
+        return this.name2ContactCache.get(key)
     }
 
     public setName2Contact (name: string, contact: Contact | Room) {
-        this.name2ContactCache.set(name, contact)
+        if (contact instanceof this.bot.Contact) {
+            this.name2ContactCache.set(this.createKey(ContactType.Individual, name), contact)
+        } else if (contact instanceof this.bot.Room) {
+            this.name2ContactCache.set(this.createKey(ContactType.Group, name), contact)
+        }
     }
 
     public popMostRecentMessage (fromId: string): Message | undefined {
@@ -210,4 +226,4 @@ class BotStorage {
 
 }
 
-export { BotStorage }
+export { BotStorage, ContactType }

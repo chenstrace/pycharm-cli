@@ -17,7 +17,7 @@ import {
 
 } from './conf.ts'
 
-import { BotStorage } from './bot_storage.ts'
+import { BotStorage, ContactType } from './bot_storage.ts'
 import { format } from 'date-fns'
 import os from 'os'
 import path from 'path'
@@ -43,7 +43,7 @@ async function getRoomInfoByMessage (msg: Message, storage: BotStorage): Promise
 }
 
 async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
-    console.error(msg)
+    // console.error(msg)
     const from = msg.talker()
     const to = msg.listener() as Contact
     if (from.type() !== bot.Contact.Type.Individual) {
@@ -173,83 +173,149 @@ async function processSpecialRemark (bot: Wechaty, storage: BotStorage, remarkTy
     }
     log.info('processSpecialRemark', 'parsed name: %s', name)
     log.info('processSpecialRemark', 'parsed msg: %s', msg)
+    let contact
+    if (remarkType === RemarkType.OTHER) {
+        contact = storage.getContactByRemark(name) // only for contact, not group
+        if (contact) {
+            log.info('processSpecialRemark', 'bot.getContactByRemark(%s) SUCCESS, result:%s', name, JSON.stringify(contact))
+        } else {
+            contact = storage.getContactByNameAndType(name, ContactType.Individual)
+            if (contact) {
+                log.info('processSpecialRemark', 'bot.getContactByNameAndIndividual(%s) SUCCESS, result:%s', name, JSON.stringify(contact))
+            }
+        }
+    } else {
+        contact = storage.getContactByNameAndType(name, ContactType.Group)
+        if (contact) {
+            log.info('processSpecialRemark', 'bot.getContactByNameAndGroup(%s) SUCCESS, result:%s', name, JSON.stringify(contact))
+        }
 
-    let contact = storage.getContactByName(name)
+    }
+
     if (contact) {
         return [ contact, name, msg ]
-    } else {
-        if (remarkType === RemarkType.OTHER) {
-            log.info('processSpecialRemark', 'Doing bot.findPersonByName(%s)', name)
-            contact = await bot.Contact.find({ name })
-            if (!contact) {
-                log.error('processSpecialRemark', 'bot.findPersonByName(%s) FAILED, try to findByAlias', name)
-                contact = await bot.Contact.find({ alias: name })
-            }
-        } else {
-            // RemarkType.GROUP
-            log.info('processSpecialRemark', 'Doing bot.findGroup(%s)', name)
-            contact = await bot.Room.find({ topic: name })
-        }
-        if (contact) {
-            if (contact instanceof bot.Contact) {
-                log.info('processSpecialRemark', 'bot.findPerson(%s) SUCCESS, result:%s', name, JSON.stringify(contact))
-                if (contact.friend()) {
-                    storage.setId2Remark(contact.id, name)
-                    storage.setName2Contact(name, contact)
-                }
-            } else if (contact instanceof bot.Room) {
-                log.info('processSpecialRemark', 'bot.findGroup(%s) SUCCESS, result:%s', name, JSON.stringify(contact))
-                const topic = await contact.topic()
-                if (topic === name) {
-                    storage.setId2Remark(contact.id, name)
-                    storage.setName2Contact(name, contact)
-                }
-            }
-        } else {
-            if (remarkType === RemarkType.OTHER) {
-                log.error('processOtherRemark', 'bot.findPerson(%s) FAILED', name)
-            } else {
-                // RemarkType.GROUP
-                log.error('processGroupRemark', 'bot.findGroup(%s) FAILED', name)
-            }
-        }
-        return [ contact, name, msg ]
     }
+
+    if (remarkType === RemarkType.OTHER) {
+        log.info('processSpecialRemark', 'Doing bot.findAll({ name: %s })', name)
+        const contactList = await bot.Contact.findAll({ name })
+
+        if (contactList.length === 1) {
+            contact = contactList[0]
+        } else if (contactList.length === 0) {
+            log.info('processSpecialRemark', 'bot.findAll({ name: %s }) FAILED, try to find by alias', name)
+            const contactListByAlias = await bot.Contact.findAll({ alias: name })
+
+            if (contactListByAlias.length === 1) {
+                contact = contactListByAlias[0]
+            }
+        }
+    } else {
+        // RemarkType.GROUP
+        log.info('processSpecialRemark', 'Doing bot.findAll({ topic: %s })', name)
+        const roomList = await bot.Room.findAll({ topic: name })
+
+        if (roomList.length === 1) {
+            contact = roomList[0]
+        }
+    }
+
+    if (contact) {
+        if (contact instanceof bot.Contact) {
+            log.info('processSpecialRemark', 'bot.findAll({ name/alias: %s }) SUCCESS, result:%s', name, JSON.stringify(contact))
+            if (contact.friend()) {
+                storage.setId2Remark(contact.id, name)
+                storage.setName2Contact(name, contact)
+            }
+        } else if (contact instanceof bot.Room) {
+            log.info('processSpecialRemark', 'bot.findAll({ topic: %s }) SUCCESS, result:%s', name, JSON.stringify(contact))
+            const topic = await contact.topic()
+            if (topic === name) {
+                storage.setId2Remark(contact.id, name)
+                storage.setName2Contact(name, contact)
+            }
+        }
+    } else {
+        const logMessage = `bot.findAll({ ${remarkType === RemarkType.OTHER ? 'name/alias' : 'topic'}: ${name} }) FAILED`
+        log.error(`process${remarkType === RemarkType.OTHER ? 'Other' : 'Group'}Remark`, logMessage)
+    }
+
+    return [ contact, name, msg ]
 }
 
 async function processNormalRemark (bot: Wechaty, storage: BotStorage, remark: string) {
-    let contact = storage.getContactByRemark(remark)
+    const contactByRemark = storage.getContactByRemark(remark)  // only for contact, not group
 
-    if (contact) {
-        log.info('processNormalRemark', 'Got (%s) from remark2ContactCache: (%s)', remark, JSON.stringify(contact))
-        if (contact.id) {
-            storage.setId2Remark(contact.id, remark)
-        }
-    } else {
-        log.info('processNormalRemark', 'Doing bot.findByAlias(%s)', remark)
-        contact = await bot.Contact.find({ alias: remark })
-        if (contact) {
-            log.info('processNormalRemark', 'bot.findByAlias(%s) SUCCESS, result:%s', remark, JSON.stringify(contact))
-
-            if (contact.id) {
-                storage.setId2Remark(contact.id, remark)
-            }
-
-            if (contact.friend()) {
-                storage.setRemark2Contact(remark, contact)
-                const contactName = contact.name()
-                if (contactName) {
-                    storage.setName2Contact(contactName, contact)
-                }
-            } else {
-                log.info('processNormalRemark', 'bot.findByAlias(%s) found, but NOT friend, SYNC', remark)
-                await contact.sync()
-            }
-        } else {
-            log.error('processNormalRemark', 'bot.findByAlias(%s) FAIL', remark)
-        }
+    if (contactByRemark) {
+        log.info('processNormalRemark', 'Got (%s) from cache by remark: (%s)', remark, JSON.stringify(contactByRemark))
+        return await processContactFromCache(contactByRemark, remark, storage)
     }
+
+    const contactByName = storage.getContactByNameAndType(remark, ContactType.Individual)
+    if (contactByName && contactByName instanceof bot.Contact) {
+        log.info('processNormalRemark', 'Got (%s) from cache by name: (%s)', remark, JSON.stringify(contactByRemark))
+        return await processContactFromCache(contactByName, remark, storage)
+    }
+
+    log.info('processNormalRemark', 'Doing bot.findByAlias(%s)', remark)
+    const contactList = await bot.Contact.findAll({ alias: remark })
+
+    if (contactList.length === 1) {
+        log.info('processNormalRemark', 'bot.findByAlias(%s) Got (%s)', remark, JSON.stringify(contactList[0]))
+        return processContactFromFind(contactList[0] as Contact, remark, storage)
+    }
+
+    if (contactList.length === 0) {
+        log.info('processNormalRemark', 'bot.findByAlias(%s) FAILED', remark)
+        return processFallbackByName(bot, remark, storage)
+    }
+
+    log.info('processNormalRemark', 'bot.findByAlias(%s) got %d results', remark, contactList.length)
+    return undefined
+}
+
+async function processFallbackByName (bot: Wechaty, remark: string, storage: BotStorage) {
+    const contactList = await bot.Contact.findAll({ name: remark })
+
+    if (contactList.length === 1) {
+        log.info('processNormalRemark', 'bot.findByName(%s) Got (%s)', remark, JSON.stringify(contactList[0]))
+        return processContactFromFind(contactList[0] as Contact, remark, storage)
+    }
+
+    log.info('processNormalRemark', 'bot.findByName(%s) got %d results', remark, contactList.length)
+    return undefined
+}
+
+async function processContactFromCache (contact: Contact, remark: string, storage: BotStorage) {
+    if (contact.id) {
+        storage.setId2Remark(contact.id, remark)
+    }
+
     return contact
+}
+
+async function processContactFromFind (contact: Contact, remark: string, storage: BotStorage) {
+    if (contact.id) {
+        storage.setId2Remark(contact.id, remark)
+    }
+
+    if (contact.friend()) {
+        updateStorage(contact, remark, storage)
+    } else {
+        log.info('processNormalRemark', 'Found contact but not friend, syncing')
+        await contact.sync()
+    }
+
+    return contact
+}
+
+function updateStorage (contact: Contact, remark: string, storage: BotStorage) {
+    storage.setRemark2Contact(remark, contact)
+
+    const contactName = contact.name()
+    if (contactName) {
+        storage.setName2Contact(contactName, contact)
+    }
 }
 
 async function processMessageQueue (bot: Wechaty, storage: BotStorage) {
@@ -396,7 +462,7 @@ async function onReady (bot: Wechaty, storage: BotStorage) {
 
 async function main () {
     const bot = WechatyBuilder.build({ name: 'ding-dong-bot' })
-    const storage = new BotStorage()
+    const storage = new BotStorage(bot)
     await storage.init()
     const remarkList = await storage.getRemarks()
     log.info('main', 'remark list: %s', remarkList.toString())
