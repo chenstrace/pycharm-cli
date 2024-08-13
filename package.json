@@ -1,7 +1,6 @@
 {
-  "name": "wechaty-getting-started",
-  "version": "1.18.12",
-  "description": "Wechaty conversational SDK getting start template & examples",
+  "name": "pycharm-cli",
+  "version": "1.0.0",
   "type": "module",
   "engines": {
     "node": ">=16",
@@ -15,15 +14,8 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wechaty/getting-started.git"
+    "url": "git+https://github.com/chenstrace/pycharm-cli.git"
   },
-  "keywords": [],
-  "author": "Huan LI <zixia@zixia.net>",
-  "license": "Apache-2.0",
-  "bugs": {
-    "url": "https://github.com/wechaty/getting-started/issues"
-  },
-  "homepage": "https://github.com/wechaty/getting-started#readme",
   "dependencies": {
     "date-fns": "^3.6.0",
     "dotenv": "^16.0.0",
