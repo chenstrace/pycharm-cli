@@ -253,7 +253,7 @@ async function processNormalRemark (bot: Wechaty, storage: BotStorage, remark: s
 
     const contactByName = storage.getContactByNameAndType(remark, ContactType.Individual)
     if (contactByName && contactByName instanceof bot.Contact) {
-        log.info('processNormalRemark', 'Got (%s) from cache by name: (%s)', remark, JSON.stringify(contactByRemark))
+        log.info('processNormalRemark', 'Got (%s) from cache by name: (%s)', remark, JSON.stringify(contactByName))
         return await processContactFromCache(contactByName, remark, storage)
     }
 
