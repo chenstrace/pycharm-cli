@@ -24,7 +24,7 @@
     "qrcode-terminal": "^0.12.0",
     "redis": "^4.6.13",
     "wechaty": "^1.18.1",
-    "wechaty-puppet-wechat4u": "file:/Users/chenjili/project/puppet-wechat4u",
+    "wechaty-puppet-wechat4u": "file:C:\\Users\\cjili\\project\\puppet-wechat4u",
     "xml2js": "^0.6.2"
   },
   "devDependencies": {

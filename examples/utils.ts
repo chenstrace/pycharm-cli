@@ -173,4 +173,5 @@ export {
     handleOutGoingMessage,
     parseMsgIdFromRevokedMsgText,
     parseContactFromNameCardMsg,
+    ensureDirectoryExists,
 }
