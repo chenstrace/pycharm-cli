@@ -1,11 +1,11 @@
 import { promises as fs } from 'fs'
 import path, { join } from 'path'
 import { format } from 'date-fns'
-import { homedir } from 'os'
 import { Contact, log, Room } from 'wechaty'
 import { FileBox } from 'file-box'
 import type { BotStorage } from './bot_storage.ts'
 import { parseStringPromise } from 'xml2js'
+import { HOME_DIR } from './conf.ts'
 
 async function fileExists (filePath: string) {
     try {
@@ -26,8 +26,7 @@ async function ensureDirectoryExists (directoryPath: string): Promise<void> {
 
 async function appendDateNamedLogFile (content: string, date: Date): Promise<void> {
     try {
-        const homeDir = homedir()
-        const directoryPath = join(homeDir, 'wechaty', 'history')
+        const directoryPath = join(HOME_DIR, 'wechaty', 'history')
 
         await ensureDirectoryExists(directoryPath)
 

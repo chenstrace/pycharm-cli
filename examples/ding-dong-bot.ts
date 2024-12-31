@@ -7,19 +7,17 @@ import { Contact, log, Message, Room, Wechaty, WechatyBuilder } from 'wechaty'
 import {
     appendLogFile,
     appendTimestampToFileName,
-    fileExists, ensureDirectoryExists,
-    handleOutGoingMessage, parseContactFromNameCardMsg, parseMsgIdFromRevokedMsgText,
+    ensureDirectoryExists,
+    fileExists,
+    handleOutGoingMessage,
+    parseContactFromNameCardMsg,
+    parseMsgIdFromRevokedMsgText,
 } from './utils.ts'
-import { onScan, onLogin, onLogout } from './events.ts'
-import {
-    MSG_FILE,
-    ATT_SAVE_DIR,
-
-} from './conf.ts'
+import { onLogin, onLogout, onScan } from './events.ts'
+import { ATT_SAVE_DIR, HOME_DIR, MSG_FILE } from './conf.ts'
 
 import { BotStorage, ContactType } from './bot_storage.ts'
 import { format } from 'date-fns'
-import os from 'os'
 import path from 'path'
 
 enum RemarkType {
@@ -394,8 +392,7 @@ async function processContact (bot: Wechaty, storage: BotStorage) {
     const formattedTime = format(currentTime, 'yyyyMMdd-HHmmss')
     const fileName = `${formattedTime}.json`
 
-    const homeDir = os.homedir()
-    const dirPath = path.join(homeDir, 'wechaty', 'contact')
+    const dirPath = path.join(HOME_DIR, 'wechaty', 'contact')
 
     try {
         await fs.mkdir(dirPath, { recursive: true })
