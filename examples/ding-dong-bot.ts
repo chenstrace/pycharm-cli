@@ -7,7 +7,7 @@ import { Contact, log, Message, Room, Wechaty, WechatyBuilder } from 'wechaty'
 import {
     appendLogFile,
     appendTimestampToFileName,
-    fileExists,
+    fileExists, ensureDirectoryExists,
     handleOutGoingMessage, parseContactFromNameCardMsg, parseMsgIdFromRevokedMsgText,
 } from './utils.ts'
 import { onScan, onLogin, onLogout } from './events.ts'
@@ -469,6 +469,8 @@ async function main () {
     if (remarkList.length === 0) {
         log.error('main', 'No contact found in redis')
     }
+
+    await ensureDirectoryExists(ATT_SAVE_DIR)
 
     try {
         await appendLogFile(MSG_FILE, 'Program begin')
