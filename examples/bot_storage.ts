@@ -125,6 +125,7 @@ class BotStorage {
     private messageCache = new SimpleMessageCache(300)
     private contactList = new ContactList()
     private bot: Wechaty
+    private hasInitialized = false
 
     constructor (bot: Wechaty) {
         this.redisClient = createClient({ url: REDIS_URL })
@@ -222,6 +223,14 @@ class BotStorage {
 
     public searchContact (key: string) {
         return this.contactList.search(key)
+    }
+
+    public setHasInitialized (hasInitialized: boolean) {
+        this.hasInitialized = hasInitialized
+    }
+
+    public getHasInitialized () {
+        return this.hasInitialized
     }
 
 }

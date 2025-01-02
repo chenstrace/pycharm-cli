@@ -435,28 +435,19 @@ async function onReady (bot: Wechaty, storage: BotStorage) {
 
     try {
         await appendLogFile(MSG_FILE, 'Program ready')
-        // const room = await bot.Room.find({ topic: '小号' })
-        //
-        // if (room) {
-        //     console.error(room)
-        //     room.on('leave', (leaverList, kick) => {
-        //         const nameList = leaverList.map(c => c.name()).join(',')
-        //         console.error(`Room lost member ${nameList}`)
-        //         console.error(kick)
-        //     })
-        // } else {
-        //     console.error('Room not found')
-        // }
-
     } catch (err) {
         // @ts-ignore
         log.error('onReady', 'Error writing ready to file:%s', err.message)
     }
 
-    storage.setId2Remark(bot.currentUser.id, 'me')
-    setupPeriodicMessageSending(bot, storage)
-    setupPeriodicLoginStateSyncing(bot, storage)
-    dumpContact(bot, storage)
+    if (!storage.getHasInitialized()) {
+        storage.setHasInitialized(true)
+        setupPeriodicMessageSending(bot, storage)
+        setupPeriodicLoginStateSyncing(bot, storage)
+        dumpContact(bot, storage)
+    } else {
+        log.info('onReady', 'Skipping initialization steps as they are already done.')
+    }
 }
 
 async function main () {
