@@ -6,8 +6,7 @@ import { Contact, log, Message, Room, Wechaty, WechatyBuilder } from 'wechaty'
 
 import {
     appendLogFile,
-    appendTimestampToFileName,
-    ensureDirectoryExists,
+    mkdir,
     fileExists,
     handleOutGoingMessage,
     parseContactFromNameCardMsg,
@@ -66,12 +65,15 @@ async function onMessage (msg: Message, bot: Wechaty, storage: BotStorage) {
         } else {
             const fileBox = await msg.toFileBox()
             const fileName = fileBox.name
-            let savePath = ATT_SAVE_DIR + fileName
-            // 如果文件存在，则在文件名后面加上当前时间戳
-            if (await fileExists(savePath)) {
-                savePath = await appendTimestampToFileName(savePath)
+
+            const savePath = path.join(
+                ATT_SAVE_DIR,
+                `${format(new Date(), 'yyyyMMddHHmmss')}-${fileName}`,
+            )
+
+            if (!(await fileExists(savePath))) {
+                await fileBox.toFile(savePath)
             }
-            await fileBox.toFile(savePath)
             message = savePath
         }
     } else if (msgType === bot.Message.Type.Emoticon) {
@@ -467,7 +469,7 @@ async function main () {
         log.error('main', 'No contact found in redis')
     }
 
-    await ensureDirectoryExists(ATT_SAVE_DIR)
+    await mkdir(ATT_SAVE_DIR)
 
     try {
         await appendLogFile(MSG_FILE, 'Program begin')

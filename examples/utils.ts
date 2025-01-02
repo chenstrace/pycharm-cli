@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs'
-import path, { join } from 'path'
+import { join } from 'path'
 import { format } from 'date-fns'
 import { Contact, log, Room } from 'wechaty'
 import { FileBox } from 'file-box'
@@ -16,7 +16,7 @@ async function fileExists (filePath: string) {
     }
 }
 
-async function ensureDirectoryExists (directoryPath: string): Promise<void> {
+async function mkdir (directoryPath: string): Promise<void> {
     try {
         await fs.mkdir(directoryPath, { recursive: true })
     } catch (error) {
@@ -28,7 +28,7 @@ async function appendDateNamedLogFile (content: string, date: Date): Promise<voi
     try {
         const directoryPath = join(HOME_DIR, 'wechaty', 'history')
 
-        await ensureDirectoryExists(directoryPath)
+        await mkdir(directoryPath)
 
         const formattedDate = format(date, 'yyyyMMddHH')
         const fileName = `${formattedDate}.txt`
@@ -38,13 +38,6 @@ async function appendDateNamedLogFile (content: string, date: Date): Promise<voi
     } catch (error) {
         console.error('Error writing message to file:', error)
     }
-}
-
-async function appendTimestampToFileName (filePath: string) {
-    const parsedPath = path.parse(filePath)
-    const timestamp = Date.now()
-    const newFileName = `${parsedPath.name}_${timestamp}${parsedPath.ext}`
-    return path.join(parsedPath.dir, newFileName)
 }
 
 async function sendFileMessage (contact: Contact | Room, filePath: string) {
@@ -168,9 +161,8 @@ async function parseXml (xml: string) {
 export {
     fileExists,
     appendLogFile,
-    appendTimestampToFileName,
     handleOutGoingMessage,
     parseMsgIdFromRevokedMsgText,
     parseContactFromNameCardMsg,
-    ensureDirectoryExists,
+    mkdir,
 }
